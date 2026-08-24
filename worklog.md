@@ -263,3 +263,44 @@ Stage Summary:
   - zerexa-video-app-ios-unsigned-<ver>.ipa (Flutter WebView, 未签名)
 - 推送 main 分支会触发首次 pre-release, 同时产出 4 个文件
 - iOS IPA 未签名, 用户需用 TrollStore / AltStore / Sideloadly 安装
+
+---
+Task ID: 7
+Agent: Super Z (main)
+Task: 修复 release job 失败: bash heredoc 在 YAML literal block 里
+  body 不能 0 缩进 (YAML 解析错误)
+
+Work Log:
+- 问题: release-notes 步骤用 `cat > release-notes.md <<'NOTES_EOF' ...`
+  heredoc body 写在 0 列, YAML 把 `__HEADER_LINE__` 当成 mapping key
+  解析失败: "could not find expected ':'"
+- 同时也发现: 直接用 echo + 双引号包 markdown 有 `<hash>` 被当 input
+  redirect 的问题 (line 57 syntax error)
+- 修复方案: 把模板挪到独立文件 scripts/release-notes-template.md,
+  placeholders 用 `__VERSION__` / `__HEADER_LINE__` 等
+- 写 Python 渲染器 scripts/render-release-notes.py:
+  - 接受 8 个文件路径参数 (template / output / 7 个值文件)
+  - 避免任何 shell quoting 问题
+- workflow 改为:
+  1. 用 bash 计算各变量值
+  2. printf '%s' "$VAR" > /tmp/rn/<name>  写到临时文件
+  3. python3 scripts/render-release-notes.py <args> 替换占位符
+- 本地测试模板渲染 + actionlint 全部通过
+- 推送 (commit e0938b3), 等待 Actions run #4 完成:
+  - meta: success
+  - build-server: success (84MB Linux ELF + 123MB Windows .exe)
+  - build-android: success (43.7MB universal APK)
+  - build-ios: success (6.2MB unsigned IPA)
+  - release: success (5 个 asset 全部上传)
+- 删除旧 zip-based release (pre-61093f)
+
+Stage Summary:
+- 4 个原生可执行产物全部就绪并已上传 GitHub Release:
+  1. zerexa-video-server-linux-x64 (ELF, 83.3 MB)
+  2. zerexa-video-server-win-x64.exe (PE32+, 123.0 MB)
+  3. zerexa-video-app-android-universal-0.0.0-pre.e0938b.apk (43.7 MB)
+  4. zerexa-video-app-ios-unsigned-0.0.0-pre.e0938b.ipa (6.2 MB)
+  外加 SHA256SUMS.txt (433 bytes)
+- 当前 release URL:
+  https://github.com/ZerexaNet/Zerexa-video-app/releases/tag/pre-e0938b
+- 后续打正式版: git tag v0.4.0 && git push origin v0.4.0
