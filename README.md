@@ -5,7 +5,7 @@
 [![Stack](https://img.shields.io/badge/stack-Next.js%2016%20%2B%20TypeScript%20%2B%20Tailwind%204-blue)]()
 [![API](https://img.shields.io/badge/API-zerexa--video.apifox.cn-blue)]()
 
-本项目是一个完整的视频网站前端应用，对接 [Zerexa Video](https://video.zerexa.net) 公开 API（[文档](https://zerexa-video.apifox.cn/)），融合 [video.zerexa.net](https://video.zerexa.net) 的产品形态、Google Material You 的视觉语言、Windows 8 Metro 的扁平美学，以及参考 [io.hk.cn](https://www.io.hk.cn/) 的清爽留白排版，提供四种可一键切换的整体主题与一个完整的后台管理面板。
+本项目是一个完整的视频网站前端应用，对接 [Zerexa Video](https://video.zerexa.net) 公开 API（[文档](https://zerexa-video.apifox.cn/)），提供四种可一键切换的整体主题与一个完整的后台管理面板。
 
 ---
 
