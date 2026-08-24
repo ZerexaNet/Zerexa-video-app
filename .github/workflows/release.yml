@@ -1,23 +1,15 @@
-# Zerexa Video App — Auto Build & Release
+# Zerexa Video App — Auto Build & Release (4 native binaries)
 # ---------------------------------------------------------------------------
-# 触发规则:
-#   - push 到 main 分支       → 自动打包, 发 pre-release
-#                               版本号 = commit SHA 前 6 位
-#                               tag 名 = pre-<sha6>
-#   - push 形如 v* 的 tag     → 自动打包, 发普通 release (latest)
-#                               版本号 / tag 名 = tag 本身 (例如 v1.2.0)
-#   - workflow_dispatch        → 手动触发, 默认走 pre-release 分支
+# Outputs:
+#   - zerexa-video-server-linux-x64          ELF x86-64  (Next.js server + Node runtime, single file)
+#   - zerexa-video-server-win-x64.exe        PE32+       (Next.js server + Node runtime, single file)
+#   - zerexa-video-app-android-universal.apk  Android     (Flutter WebView shell)
+#   - zerexa-video-app-ios-unsigned.ipa       iOS        (Flutter WebView shell, unsigned)
 #
-# 产物:
-#   - zerexa-video-app-<version>.tar.gz   (Next.js standalone + 静态资源 + prisma)
-#   - zerexa-video-app-<version>.zip
-#   - SHA256SUMS.txt                       (前两个文件的 sha256)
-#
-# 部署:
-#   解压 tar.gz 后, 进入 standalone 目录运行:
-#     NODE_ENV=production node server.js
-#   需要 Prisma 的环境请额外执行:
-#     bunx prisma generate && bunx prisma db push
+# Triggers:
+#   - push to main  (no v* tag) -> pre-release, version = 0.0.0-pre.<sha6>, tag = pre-<sha6>
+#   - push v* tag                  -> normal release, version = tag name, becomes latest
+#   - workflow_dispatch            -> manual, choose release / prerelease
 # ---------------------------------------------------------------------------
 
 name: Build & Release
@@ -29,115 +21,108 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: 'Release type (release or prerelease)'
+        description: 'Release type'
         required: false
         default: 'prerelease'
         type: choice
-        options:
-          - prerelease
-          - release
+        options: [prerelease, release]
 
 permissions:
-  contents: write   # 创建 release / tag 必需
-  packages: write   # 备用, 上传到 GHCR 时需要
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  # -----------------------------------------------------------------------
+  # Compute release metadata once and fan out
+  # -----------------------------------------------------------------------
+  meta:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      is_release: ${{ steps.meta.outputs.is_release }}
+      commit_short: ${{ steps.meta.outputs.commit_short }}
     steps:
-      # ---------------------------------------------------------------------
-      # 1. 计算版本号 / tag / release 类型
-      # ---------------------------------------------------------------------
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # 拿到完整历史, 便于生成 release notes
-
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - name: Compute release metadata
         id: meta
         run: |
           set -euo pipefail
+          IS_RELEASE="false"; IS_PRERELEASE="true"
+          VERSION=""; TAG_NAME=""; RELEASE_NAME=""
 
-          # 默认值
-          IS_RELEASE="false"
-          IS_PRERELEASE="true"
-          VERSION=""
-          TAG_NAME=""
-          RELEASE_NAME=""
-
-          # 1) workflow_dispatch: 看用户输入
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT_TYPE="${{ github.event.inputs.release_type }}"
-            COMMIT_SHORT="${GITHUB_SHA:0:6}"
+            SHORT="${GITHUB_SHA:0:6}"
             if [ "$INPUT_TYPE" = "release" ]; then
-              IS_RELEASE="true"
-              IS_PRERELEASE="false"
-              VERSION="manual-${COMMIT_SHORT}"
-              TAG_NAME="manual-${COMMIT_SHORT}"
+              IS_RELEASE="true"; IS_PRERELEASE="false"
+              VERSION="manual-${SHORT}"; TAG_NAME="manual-${SHORT}"
               RELEASE_NAME="Zerexa Video App (manual) ${VERSION}"
             else
-              VERSION="0.0.0-pre.${COMMIT_SHORT}"
-              TAG_NAME="pre-${COMMIT_SHORT}"
-              RELEASE_NAME="Zerexa Video App Pre-release ${COMMIT_SHORT}"
+              VERSION="0.0.0-pre.${SHORT}"; TAG_NAME="pre-${SHORT}"
+              RELEASE_NAME="Zerexa Video App Pre-release ${SHORT}"
             fi
-          # 2) tag 推送 (refs/tags/v*): 普通发布
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            IS_RELEASE="true"
-            IS_PRERELEASE="false"
-            VERSION="${GITHUB_REF#refs/tags/}"
-            TAG_NAME="${VERSION}"
+            IS_RELEASE="true"; IS_PRERELEASE="false"
+            VERSION="${GITHUB_REF#refs/tags/}"; TAG_NAME="${VERSION}"
             RELEASE_NAME="Zerexa Video App ${VERSION}"
-          # 3) 普通分支推送 (main): pre-release
           else
-            COMMIT_SHORT="${GITHUB_SHA:0:6}"
-            VERSION="0.0.0-pre.${COMMIT_SHORT}"
-            TAG_NAME="pre-${COMMIT_SHORT}"
-            RELEASE_NAME="Zerexa Video App Pre-release ${COMMIT_SHORT}"
+            SHORT="${GITHUB_SHA:0:6}"
+            VERSION="0.0.0-pre.${SHORT}"; TAG_NAME="pre-${SHORT}"
+            RELEASE_NAME="Zerexa Video App Pre-release ${SHORT}"
           fi
 
-          echo "is_release=${IS_RELEASE}"        >> "$GITHUB_OUTPUT"
-          echo "is_prerelease=${IS_PRERELEASE}"  >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}"             >> "$GITHUB_OUTPUT"
-          echo "tag_name=${TAG_NAME}"           >> "$GITHUB_OUTPUT"
-          echo "release_name=${RELEASE_NAME}"   >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"          >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}"        >> "$GITHUB_OUTPUT"
+          echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "is_release=${IS_RELEASE}"    >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
           echo "commit_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          echo "commit_full=${GITHUB_SHA}"      >> "$GITHUB_OUTPUT"
 
-          # 调试输出
           {
-            echo "=== Release Metadata ==="
-            echo "Event:        ${{ github.event_name }}"
-            echo "Ref:          ${GITHUB_REF}"
-            echo "Version:      ${VERSION}"
-            echo "Tag name:     ${TAG_NAME}"
-            echo "Release name: ${RELEASE_NAME}"
-            echo "Pre-release:  ${IS_PRERELEASE}"
-            echo "Commit:       ${GITHUB_SHA:0:7}"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "## Release metadata"
+            echo "| key | value |"
+            echo "|-----|-------|"
+            echo "| event | ${{ github.event_name }} |"
+            echo "| ref | ${GITHUB_REF} |"
+            echo "| version | ${VERSION} |"
+            echo "| tag | ${TAG_NAME} |"
+            echo "| prerelease | ${IS_PRERELEASE} |"
+            echo "| commit | ${GITHUB_SHA:0:7} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      # ---------------------------------------------------------------------
-      # 2. 安装 Bun + 依赖
-      # ---------------------------------------------------------------------
+  # -----------------------------------------------------------------------
+  # Build server-side single-file binaries (Linux ELF + Windows PE)
+  # -----------------------------------------------------------------------
+  build-server:
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+        with: { bun-version: latest }
 
-      - name: Cache bun dependencies
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Cache Node.js binaries
+        id: cache-node
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          path: /tmp/node-cache
+          key: node-v22.11.0-linux-x64+win-x64
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -145,112 +130,246 @@ jobs:
       - name: Generate Prisma client
         run: bunx prisma generate
 
-      # ---------------------------------------------------------------------
-      # 3. 构建 Next.js standalone
-      # ---------------------------------------------------------------------
-      - name: Build
+      - name: Build Next.js
         run: bun run build
         env:
-          NEXT_PUBLIC_API_BASE_URL: "https://api.zerexa.net"
-          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_API_BASE_URL: https://api.zerexa.net
+          NEXT_TELEMETRY_DISABLED: '1'
 
-      # ---------------------------------------------------------------------
-      # 4. 打包 standalone 产物
-      # ---------------------------------------------------------------------
-      - name: Package standalone build
-        id: package
+      - name: Build single-file binaries
         run: |
-          set -euo pipefail
-          VERSION="${{ steps.meta.outputs.version }}"
-          PKG_DIR="zerexa-video-app-${VERSION}"
-          mkdir -p "${PKG_DIR}"
+          chmod +x scripts/build-binaries.sh
+          ./scripts/build-binaries.sh "${{ needs.meta.outputs.version }}" artifacts/binaries
+        env:
+          GOOS: linux
+          GOARCH: amd64
 
-          # 主体: Next.js standalone server
-          cp -r .next/standalone "${PKG_DIR}/standalone"
+      - name: Generate SHA256
+        run: |
+          cd artifacts/binaries
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -lh
 
-          # 静态资源已经在 build 脚本里 cp 进 standalone, 这里再补一份 prisma schema
-          mkdir -p "${PKG_DIR}/prisma"
-          cp -r prisma/* "${PKG_DIR}/prisma/" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: |
+            artifacts/binaries/zerexa-video-server-linux-x64
+            artifacts/binaries/zerexa-video-server-win-x64.exe
+            artifacts/binaries/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
 
-          # 文档
-          cp README.md "${PKG_DIR}/" 2>/dev/null || true
-          cp LICENSE   "${PKG_DIR}/" 2>/dev/null || true
+  # -----------------------------------------------------------------------
+  # Build Android APK
+  # -----------------------------------------------------------------------
+  build-android:
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
-          # 部署 / 启动说明
-          cat > "${PKG_DIR}/STARTUP.txt" <<'EOF'
-          Zerexa Video App — Standalone 部署说明
-          ========================================
-          1. 解压本压缩包
-             tar -xzf zerexa-video-app-<version>.tar.gz
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-          2. 进入 standalone 目录
-             cd zerexa-video-app-<version>/standalone
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-          3. 配置环境变量 (.env)
-             DATABASE_URL=...
-             NEXT_PUBLIC_API_BASE_URL=https://api.zerexa.net
-             AUTH_SECRET=...
-             PORT=3000  (可选, 默认 3000)
+      - name: Flutter doctor
+        run: flutter doctor -v
 
-          4. 初始化数据库 (如需)
-             bunx prisma generate
-             bunx prisma db push --accept-data-loss
+      - name: Bootstrap Android project
+        run: |
+          # Generate native platform scaffolding into a temp dir, then
+          # merge with our checked-in lib/main.dart + pubspec.yaml
+          flutter create --platforms=android --org net.zerexa --project-name zerexa_video /tmp/zerexa-bootstrap
+          cp -r /tmp/zerexa-bootstrap/android ./flutter_app/
+          # Make sure pubspec.yaml dependencies are honored
+          cd flutter_app
+          flutter pub get
 
-          5. 启动
-             NODE_ENV=production node server.js
+      - name: Patch AndroidManifest (INTERNET permission + cleartext)
+        run: |
+          cd flutter_app/android/app/src/main
+          python3 - <<'PY'
+          import re
+          p = 'AndroidManifest.xml'
+          s = open(p).read()
+          if 'android.permission.INTERNET' not in s:
+            s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET" />\n<application')
+          # Allow cleartext to localhost for dev builds
+          if 'usesCleartextTraffic' not in s:
+            s = s.replace('<application', '<application android:usesCleartextTraffic="true"')
+          open(p,'w').write(s)
+          PY
+          cat AndroidManifest.xml
 
-          6. 反向代理
-             推荐使用 Caddy / Nginx 把 :3000 反代到 80/443
-          EOF
+      - name: Build APK
+        run: |
+          cd flutter_app
+          flutter build apk --release --no-shrink
+        env:
+          ZEREXA_WEBVIEW_URL: https://video.zerexa.net
 
-          # 打包
-          tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
-          zip -r  "${PKG_DIR}.zip"     "${PKG_DIR}" >/dev/null
-
-          # sha256
-          sha256sum "${PKG_DIR}.tar.gz" "${PKG_DIR}.zip" > SHA256SUMS.txt
-
-          # 调试
-          ls -lh "${PKG_DIR}.tar.gz" "${PKG_DIR}.zip" SHA256SUMS.txt
+      - name: Rename APK with version
+        run: |
+          mkdir -p artifacts
+          cp flutter_app/build/app/outputs/flutter-apk/app-release.apk \
+            "artifacts/zerexa-video-app-android-universal-${{ needs.meta.outputs.version }}.apk"
+          cd artifacts
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
           cat SHA256SUMS.txt
 
-          echo "asset_name=${PKG_DIR}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            artifacts/zerexa-video-app-android-universal-*.apk
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
 
-      # ---------------------------------------------------------------------
-      # 5. 生成 Release Notes
-      # ---------------------------------------------------------------------
-      - name: Generate release notes
-        id: notes
+  # -----------------------------------------------------------------------
+  # Build iOS IPA (unsigned, sideload via TrollStore / AltStore)
+  # -----------------------------------------------------------------------
+  build-ios:
+    needs: meta
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Setup CocoaPods
         run: |
-          set -euo pipefail
-          NOTES_FILE="release-notes.md"
-          COMMIT_FULL="${{ steps.meta.outputs.commit_full }}"
-          COMMIT_SHORT="${{ steps.meta.outputs.commit_short }}"
-          VERSION="${{ steps.meta.outputs.version }}"
-          TAG_NAME="${{ steps.meta.outputs.tag_name }}"
+          gem install cocoapods --no-document
+          pod --version
 
-          # 取上一个 tag (排除当前要创建的)
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Bootstrap iOS project
+        run: |
+          flutter create --platforms=ios --org net.zerexa --project-name zerexa_video /tmp/zerexa-bootstrap
+          cp -r /tmp/zerexa-bootstrap/ios ./flutter_app/
+          cd flutter_app
+          flutter pub get
+
+      - name: Patch iOS deployment target
+        run: |
+          cd flutter_app/ios
+          # Set IPHONEOS_DEPLOYMENT_TARGET to 13.0 for webview_flutter_wkwebview
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          # Allow http loads (App Transport Security)
+          python3 - <<'PY'
+          p='Runner/Info.plist'
+          s=open(p).read()
+          if 'NSAppTransportSecurity' not in s:
+            ins='''
+          <key>NSAppTransportSecurity</key>
+          <dict>
+            <key>NSAllowsArbitraryLoads</key>
+            <true/>
+            <key>NSAllowsArbitraryLoadsInWebContent</key>
+            <true/>
+          </dict>
+          '''
+            s=s.replace('</dict>\n</plist>', ins+'</dict>\n</plist>')
+            open(p,'w').write(s)
+          PY
+          cat Runner/Info.plist
+
+      - name: Build iOS (no codesign)
+        run: |
+          cd flutter_app
+          flutter build ios --release --no-codesign
+        env:
+          ZEREXA_WEBVIEW_URL: https://video.zerexa.net
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p artifacts/Payload
+          cp -r flutter_app/build/ios/iphoneos/Runner.app artifacts/Payload/
+          cd artifacts
+          zip -qr "zerexa-video-app-ios-unsigned-${{ needs.meta.outputs.version }}.ipa" Payload
+          rm -rf Payload
+          shasum -a 256 * > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            artifacts/zerexa-video-app-ios-unsigned-*.ipa
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # Publish GitHub Release with all 4 native binaries
+  # -----------------------------------------------------------------------
+  release:
+    needs: [meta, build-server, build-android, build-ios]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: false
+
+      - name: Flatten assets into a single dir
+        run: |
+          mkdir -p flat
+          find release-assets -type f \( \
+            -name '*.apk' -o \
+            -name '*.ipa' -o \
+            -name 'zerexa-video-server-linux-x64' -o \
+            -name 'zerexa-video-server-win-x64.exe' -o \
+            -name 'SHA256SUMS.txt' \
+          \) -exec cp {} flat/ \;
+          # Rename per-artifact SHA256SUMS.txt to avoid overwrite
+          ls -lh flat/
+          # Generate a combined SHA256SUMS for the release
+          cd flat
+          rm -f SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          COMMIT_FULL="${{ github.sha }}"
+          COMMIT_SHORT="${{ needs.meta.outputs.commit_short }}"
+
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || \
                      git tag -l --sort=-version:refname | grep -v "^${TAG_NAME}$" | head -n1 || true)
 
           {
-            if [ "${{ steps.meta.outputs.is_release }}" = "true" ]; then
+            if [ "${{ needs.meta.outputs.is_release }}" = "true" ]; then
               echo "# Zerexa Video App ${VERSION}"
               echo ""
               echo "正式发布版本。构建自 commit \`${COMMIT_SHORT}\`。"
-              echo ""
-              echo "## 部署"
-              echo "1. 下载下方 \`.tar.gz\` 文件"
-              echo "2. 解压: \`tar -xzf zerexa-video-app-${VERSION}.tar.gz\`"
-              echo "3. 进入目录, 参考 \`STARTUP.txt\` 配置 \`.env\` 并启动"
-              echo ""
-              echo "## 校验"
-              echo "请下载 \`SHA256SUMS.txt\` 验证包完整性:"
-              echo "\`\`\`"
-              echo "sha256sum -c SHA256SUMS.txt"
-              echo "\`\`\`"
-              echo ""
-              echo "## 本次更新"
             else
               echo "# Zerexa Video App Pre-release"
               echo ""
@@ -259,58 +378,73 @@ jobs:
               echo "**Tag:** \`${TAG_NAME}\`  "
               echo ""
               echo "> 这是基于 \`main\` 分支最新 commit 的自动化预发布构建, 不保证稳定."
-              echo "> 需要稳定版本请使用 [\`v*\` tag](../../releases/latest) 的 release."
-              echo ""
-              echo "## 部署"
-              echo "1. 下载下方 \`.tar.gz\` 文件"
-              echo "2. 解压: \`tar -xzf zerexa-video-app-${VERSION}.tar.gz\`"
-              echo "3. 进入目录, 参考 \`STARTUP.txt\` 配置 \`.env\` 并启动"
-              echo ""
-              echo "## 校验"
-              echo "\`\`\`"
-              echo "sha256sum -c SHA256SUMS.txt"
-              echo "\`\`\`"
-              echo ""
-              echo "## 本次提交"
             fi
 
-            # 提交列表
+            echo ""
+            echo "## 下载"
+            echo ""
+            echo "| 平台 | 文件 | 说明 |"
+            echo "|------|------|------|"
+            echo "| Windows x64 | \`zerexa-video-server-win-x64.exe\` | 双击运行, 默认监听 :3000 |"
+            echo "| Linux x86_64 | \`zerexa-video-server-linux-x64\` | \`chmod +x\` 后执行, 默认监听 :3000 |"
+            echo "| Android | \`zerexa-video-app-android-universal-*.apk\` | universal APK, 同时支持 arm64/arm/x86_64 |"
+            echo "| iOS | \`zerexa-video-app-ios-unsigned-*.ipa\` | 未签名, 用 TrollStore / AltStore 安装 |"
+            echo ""
+            echo "## 校验"
+            echo ""
+            echo '```'
+            echo "sha256sum -c SHA256SUMS.txt"
+            echo '```'
+            echo ""
+            echo "## 服务端运行"
+            echo ""
+            echo '```bash'
+            echo '# Linux'
+            echo 'chmod +x zerexa-video-server-linux-x64'
+            echo './zerexa-video-server-linux-x64           # 监听 :3000'
+            echo 'PORT=8080 ./zerexa-video-server-linux-x64 # 监听 :8080'
+            echo ""
+            echo '# Windows (cmd / PowerShell)'
+            echo 'zerexa-video-server-win-x64.exe'
+            echo '$env:PORT=8080; .\zerexa-video-server-win-x64.exe'
+            echo '```'
+            echo ""
+            echo "首次运行会自动解压到 \`~/.zerexa-video-server/<hash>/\\", 后续启动直接复用."
+            echo ""
+            echo "## 移动端安装"
+            echo ""
+            echo "- **Android:** 直接安装 APK (需在系统设置中允许 \"未知来源\" 安装)"
+            echo "- **iOS:** IPA 未签名, 需用 [TrollStore](https://github.com/opa334/TrollStore) / [AltStore](https://altstore.io) / [Sideloadly](https://sideloadly.io) sideload"
+            echo ""
+
+            # Commit list
             if [ -n "$LAST_TAG" ]; then
+              echo "## 本次更新 (自 \`$LAST_TAG\`)"
               echo ""
-              echo "自 \`${LAST_TAG}\` 以来的提交:"
-              echo ""
-              git log --pretty=format:"- %s (%h)" "${LAST_TAG}..HEAD" 2>/dev/null | head -100 || true
+              git log --pretty=format:'- %s (%h)' "${LAST_TAG}..HEAD" 2>/dev/null | head -100 || true
             else
+              echo "## 本次提交"
               echo ""
-              echo "本次 commit 列表:"
-              echo ""
-              git log --pretty=format:"- %s (%h)" -n 100
+              git log --pretty=format:'- %s (%h)' -n 100
             fi
 
             echo ""
             echo ""
             echo "---"
-            echo "构建详情: [Actions Run #${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
-          } > "${NOTES_FILE}"
+            echo "Actions Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          } > release-notes.md
 
           echo "=== Release Notes Preview ==="
-          cat "${NOTES_FILE}" | head -60
-          echo "..."
+          head -50 release-notes.md
 
-      # ---------------------------------------------------------------------
-      # 6. 发布 GitHub Release
-      # ---------------------------------------------------------------------
-      - name: Create / Update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag_name }}
-          name: ${{ steps.meta.outputs.release_name }}
+          tag_name: ${{ needs.meta.outputs.tag_name }}
+          name: ${{ needs.meta.outputs.release_name }}
           body_path: release-notes.md
-          prerelease: ${{ steps.meta.outputs.is_prerelease }}
+          prerelease: ${{ needs.meta.outputs.is_prerelease }}
           files: |
-            ${{ steps.package.outputs.asset_name }}.tar.gz
-            ${{ steps.package.outputs.asset_name }}.zip
-            SHA256SUMS.txt
+            flat/*
           fail_on_unmatched_files: true
-          # 让普通 release 自动成为 latest; pre-release 不抢占 latest
-          make_latest: ${{ steps.meta.outputs.is_release == 'true' && 'true' || 'false' }}
+          make_latest: ${{ needs.meta.outputs.is_release == 'true' && 'true' || 'false' }}

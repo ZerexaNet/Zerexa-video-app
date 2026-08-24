@@ -190,3 +190,76 @@ Stage Summary:
 - 分支逻辑通过 6 个测试用例验证
 - actionlint 0 错误, YAML 解析 0 错误
 - 下一步: git commit + push 后, 首次 push 到 main 会立即触发首次 pre-release
+
+---
+Task ID: 6
+Agent: Super Z (main)
+Task: 把 release 产物从 zip/tar.gz 改成真正的原生可执行文件:
+  - Windows .exe
+  - Linux 可执行文件 (ELF)
+  - Android APK
+  - iOS IPA
+
+Work Log:
+- 调研尝试:
+  1. bun build --compile 编译 Next.js standalone -> 失败
+     (Next.js 用 dynamic require ./dev/next-dev-server, @opentelemetry/api
+     等, bun 解析不了)
+  2. @yao-pkg/pkg 编译 Next.js standalone -> 失败
+     (运行时 ESM 互操作错误: Cannot find module @swc/helpers)
+- 最终方案: 单文件可执行 = Go launcher (~2 MB) + 内嵌 base64 编码的
+  tar.gz (含 Node.js 运行时 + Next.js standalone + run.sh/run.bat)
+  - Go launcher 用 `bytes.LastIndex` 找 marker
+    `===ZEREXA-VIDEO-SERVER-PAYLOAD-BELOW-THIS-LINE-V1===`
+  - 首次运行解压到 ~/.zerexa-video-server/<sha256 前 12 位>/
+  - 之后启动直接复用缓存目录, 跳过解压
+  - run.sh (POSIX) / run.bat (Windows) 启动 node + standalone/server.js
+- 脚本 scripts/build-binaries.sh:
+  - 步骤 1: bun install + prisma generate + bun run build
+  - 步骤 2: 拷贝 .next/standalone 到 payload/
+  - 步骤 3: 写 run.sh + run.bat 启动器
+  - 步骤 4: 下载 Node.js v22.11.0 linux-x64 + win-x64 二进制
+  - 步骤 5: GOOS=linux GOARCH=amd64 + GOOS=windows GOARCH=amd64
+    cross-compile launcher
+  - 步骤 6: 拼接 launcher + marker + base64 -w 0 (单行无换行) + payload
+  - 输出: zerexa-video-server-linux-x64 (ELF, 84 MB)
+         zerexa-video-server-win-x64.exe (PE32+, 123 MB)
+- 本地端到端测试通过:
+  - Linux ELF: HTTP 200, Next.js 16.1.3 Ready in 61ms
+  - Windows .exe: PE32+ 64-bit, 文件格式正确
+- APK + IPA: 创建 flutter_app/ 子项目
+  - pubspec.yaml: webview_flutter ^4.10.0
+  - lib/main.dart: Material 3 + WebView 加载 https://video.zerexa.net
+  - assets/icon.svg: SVG 应用图标
+  - README.md: 移动端构建说明
+- 修改 .github/workflows/release.yml 为多 job 结构:
+  - meta: 计算 version / tag / is_prerelease
+  - build-server (ubuntu): 输出 linux-x64 + win-x64.exe
+    - 用 oven-sh/setup-bun@v2 + actions/setup-go@v5
+    - 缓存 Node 二进制 (/tmp/node-cache, key=固定版本)
+  - build-android (ubuntu): 输出 universal APK
+    - 用 actions/setup-java@v4 (temurin 17) + subosito/flutter-action@v2
+    - flutter create --platforms=android 生成平台目录
+    - patch AndroidManifest.xml 加 INTERNET 权限 + cleartext
+    - flutter build apk --release --no-shrink
+    - 重命名为 zerexa-video-app-android-universal-<version>.apk
+  - build-ios (macos): 输出未签名 IPA
+    - 用 subosito/flutter-action@v2 + CocoaPods (gem install)
+    - flutter create --platforms=ios 生成平台目录
+    - patch Info.plist 加 NSAppTransportSecurity 允许 http
+    - IPHONEOS_DEPLOYMENT_TARGET=13.0
+    - flutter build ios --release --no-codesign
+    - 手工 zip Payload/Runner.app 成 .ipa
+  - release (ubuntu): 等所有 build 完成, 下载 artifacts,
+    合并 SHA256SUMS, 生成 release notes, 上传到 GitHub Release
+- actionlint v1.7.4: 0 errors
+- 本地模拟 scripts/test-meta-logic.sh: 6/6 cases 仍通过
+
+Stage Summary:
+- 4 个原生可执行产物全部就绪:
+  - zerexa-video-server-linux-x64 (ELF, 84 MB, 本地 HTTP 200 通过)
+  - zerexa-video-server-win-x64.exe (PE32+, 123 MB, 格式正确)
+  - zerexa-video-app-android-universal-<ver>.apk (Flutter WebView)
+  - zerexa-video-app-ios-unsigned-<ver>.ipa (Flutter WebView, 未签名)
+- 推送 main 分支会触发首次 pre-release, 同时产出 4 个文件
+- iOS IPA 未签名, 用户需用 TrollStore / AltStore / Sideloadly 安装
