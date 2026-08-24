@@ -181,6 +181,270 @@ export interface Paginated<T> {
   offset: number;
 }
 
+// ---------- Articles (专栏) ----------
+
+export interface ArticleListItem {
+  id: string;
+  title: string;
+  summary?: string | null;
+  cover_url?: string | null;
+  category?: string | null;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  author_uid?: number;
+  author_username?: string;
+  author_gravatar_url?: string | null;
+  author_verification_badge?: VerificationBadge;
+  author_verification_label?: string | null;
+  created_at: string;
+  updated_at?: string;
+  status?: string;
+}
+
+export interface ArticleDetail extends ArticleListItem {
+  content: string;
+  liked?: boolean;
+  favorited?: boolean;
+}
+
+export interface ArticleInput {
+  title: string;
+  content: string;
+  summary?: string;
+  category?: string;
+  cover_url?: string | null;
+  status?: "draft" | "published";
+}
+
+// ---------- Dynamics (动态) ----------
+
+export interface DynamicItem {
+  id: string;
+  author_uid: number;
+  author_username: string;
+  author_gravatar_url?: string | null;
+  author_verification_badge?: VerificationBadge;
+  author_verification_label?: string | null;
+  content: string;
+  media_urls?: string[];
+  /** "text" | " repost" | "video" | "article" - upstream-dependent */
+  type?: string;
+  repost_target_id?: string | null;
+  repost_target_type?: string | null;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  liked?: boolean;
+  created_at: string;
+  ip_location?: string | null;
+}
+
+export interface DynamicInput {
+  content: string;
+  media_urls?: string[];
+  type?: string;
+}
+
+// ---------- Private messages & site notifications ----------
+
+export interface Conversation {
+  id: string;
+  peer_uid: number;
+  peer_username: string;
+  peer_gravatar_url?: string | null;
+  peer_verification_badge?: VerificationBadge;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count?: number;
+}
+
+export interface DirectMessage {
+  id: string;
+  conversation_id: string;
+  sender_uid: number;
+  sender_username: string;
+  recipient_uid: number;
+  recipient_username?: string;
+  content: string;
+  created_at: string;
+  read?: boolean;
+}
+
+export interface SiteNotification {
+  id: string;
+  type?: string;
+  title?: string;
+  content?: string;
+  link?: string | null;
+  read?: boolean;
+  created_at: string;
+  actor_uid?: number;
+  actor_username?: string;
+  actor_gravatar_url?: string | null;
+}
+
+// ---------- Tickets ----------
+
+export interface Ticket {
+  id: string;
+  title: string;
+  content: string;
+  category?: string;
+  status?: "open" | "pending" | "resolved" | "closed" | string;
+  priority?: "low" | "normal" | "high" | "urgent" | string;
+  created_by?: number;
+  creator_username?: string;
+  creator_gravatar_url?: string | null;
+  assignee_uid?: number | null;
+  assignee_username?: string | null;
+  created_at: string;
+  updated_at?: string;
+  replies?: TicketReply[];
+}
+
+export interface TicketReply {
+  id: string;
+  ticket_id: string;
+  author_uid: number;
+  author_username: string;
+  author_gravatar_url?: string | null;
+  content: string;
+  is_staff?: boolean;
+  created_at: string;
+}
+
+export interface TicketInput {
+  title: string;
+  content: string;
+  category?: string;
+  priority?: string;
+}
+
+// ---------- Public votes (公投) ----------
+
+export interface VoteOption {
+  id: string;
+  label: string;
+  description?: string | null;
+  vote_count?: number;
+  percentage?: number;
+}
+
+export interface Vote {
+  id: string;
+  title: string;
+  description?: string | null;
+  status?: "open" | "closed" | "upcoming" | string;
+  start_at?: string | null;
+  end_at?: string | null;
+  options: VoteOption[];
+  total_votes?: number;
+  has_voted?: boolean;
+  voted_option_id?: string | null;
+  created_at: string;
+}
+
+// ---------- Uploads ----------
+
+export interface UploadInitInput {
+  filename: string;
+  size: number;
+  mime_type?: string;
+  /** Optional chunk size hint (bytes). Server decides actual chunk size. */
+  chunk_size?: number;
+  /** "video" | "subtitle" | "cover" | "image" - upstream-dependent */
+  kind?: string;
+}
+
+export interface UploadInitResponse {
+  upload_id: string;
+  /** Optional pre-signed URL when the server supports direct-to-S3 uploads */
+  upload_url?: string | null;
+  /** Optional per-chunk presigned URLs (indexed by chunk index) */
+  chunk_urls?: string[];
+  chunk_size: number;
+  total_chunks: number;
+  /** Optional headers the client must include when PUTing to upload_url */
+  headers?: Record<string, string>;
+  /** Optional bucket / key for the completed object */
+  bucket?: string;
+  key?: string;
+}
+
+export interface UploadCompleteInput {
+  upload_id: string;
+  /** Final metadata for the resource created from this upload */
+  title?: string;
+  description?: string;
+  category?: string;
+  /** List of part ETags for S3 multipart completion (optional) */
+  parts?: { part_number: number; etag: string }[];
+}
+
+// ---------- Subtitles ----------
+
+export interface SubtitleTrack {
+  id: string;
+  /** BCP-47 language tag, e.g. "zh-CN", "en", "ja" */
+  language: string;
+  /** Display label, e.g. "简体中文", "English" */
+  label?: string;
+  /** True if this is the default track for the media */
+  default?: boolean;
+  url: string;
+  /** "vtt" | "srt" | "ass" - upstream-dependent */
+  format?: string;
+}
+
+// ---------- Collections (合集) ----------
+
+export interface CollectionListItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  cover_url?: string | null;
+  author_uid?: number;
+  author_username?: string;
+  author_gravatar_url?: string | null;
+  video_count?: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CollectionDetail extends CollectionListItem {
+  videos?: VideoListItem[];
+}
+
+export interface CollectionInput {
+  title: string;
+  description?: string;
+  cover_url?: string | null;
+}
+
+// ---------- Report user ----------
+
+export interface ReportUserInput {
+  target_uid: number;
+  target_type?: "user" | "video" | "comment" | "dynamic" | "article";
+  target_id?: string;
+  reason: string;
+  /** Free-form details */
+  description?: string;
+  /** Optional category tag, e.g. "spam" | "abuse" | "nsfw" | "illegal" */
+  category?: string;
+}
+
+// ---------- Admin user moderation ----------
+
+export interface AdminUserActionInput {
+  uid: number | string;
+  action: "ban" | "unban" | "set_role";
+  role?: string;
+  reason?: string;
+  duration?: string;
+}
+
 // ---------- Token helpers ----------
 
 const TOKEN_KEY = "zv_token";
@@ -473,6 +737,260 @@ export const api = {
     apiFetch<{ message?: string } | null>(`/api/videos/${id}`, {
       method: "DELETE",
       auth: true,
+    }),
+
+  // ---------- Articles (专栏) ----------
+  listArticles: (params: {
+    limit?: number;
+    offset?: number;
+    category?: string;
+  } = {}) =>
+    apiFetch<ArticleListItem[] | Paginated<ArticleListItem>>("/api/articles", {
+      query: params,
+    }),
+  getArticle: (id: string) =>
+    apiFetch<ArticleDetail>(`/api/articles/${id}`),
+  createArticle: (body: ArticleInput) =>
+    apiFetch<ArticleDetail | { message?: string; id?: string }>(
+      "/api/articles",
+      { method: "POST", auth: true, body },
+    ),
+  updateArticle: (id: string, body: Partial<ArticleInput>) =>
+    apiFetch<ArticleDetail | { message?: string }>(`/api/articles/${id}`, {
+      method: "PUT",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  deleteArticle: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/articles/${id}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+  likeArticle: (id: string) =>
+    apiFetch<{ liked: boolean; likes: number }>(
+      `/api/articles/${id}/like`,
+      { method: "POST", auth: true },
+    ),
+
+  // ---------- Dynamics (动态) ----------
+  listDynamics: (params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<DynamicItem[] | Paginated<DynamicItem>>("/api/dynamics", {
+      query: params,
+    }),
+  listDynamicsByUser: (uid: number, params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<DynamicItem[] | Paginated<DynamicItem>>(`/api/users/${uid}/dynamics`, {
+      query: params,
+    }),
+  createDynamic: (body: DynamicInput) =>
+    apiFetch<DynamicItem | { message?: string }>("/api/dynamics", {
+      method: "POST",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  deleteDynamic: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/dynamics/${id}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+  likeDynamic: (id: string) =>
+    apiFetch<{ liked: boolean; likes: number }>(
+      `/api/dynamics/${id}/like`,
+      { method: "POST", auth: true },
+    ),
+
+  // ---------- Conversations / direct messages ----------
+  listConversations: () =>
+    apiFetch<Conversation[] | Paginated<Conversation>>(
+      "/api/messages/conversations",
+      { auth: true },
+    ),
+  listMessages: (conversationId: string, params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<DirectMessage[] | Paginated<DirectMessage>>(
+      `/api/messages/conversations/${conversationId}`,
+      { query: params, auth: true },
+    ),
+  sendMessage: (body: { conversation_id?: string; recipient_uid?: number; content: string }) =>
+    apiFetch<DirectMessage | { message?: string }>(
+      "/api/messages",
+      { method: "POST", auth: true, body: body as unknown as Record<string, unknown> },
+    ),
+  startConversation: (recipientUid: number) =>
+    apiFetch<{ conversation_id: string; message?: string }>(
+      "/api/messages/conversations",
+      {
+        method: "POST",
+        auth: true,
+        body: { recipient_uid: recipientUid },
+      },
+    ),
+  markConversationRead: (conversationId: string) =>
+    apiFetch<{ message?: string } | null>(
+      `/api/messages/conversations/${conversationId}/read`,
+      { method: "POST", auth: true },
+    ),
+
+  // ---------- Site notifications ----------
+  listNotifications: (params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<SiteNotification[] | Paginated<SiteNotification>>(
+      "/api/notifications",
+      { query: params, auth: true },
+    ),
+  markNotificationRead: (id: string) =>
+    apiFetch<{ message?: string } | null>(
+      `/api/notifications/${id}/read`,
+      { method: "POST", auth: true },
+    ),
+  markAllNotificationsRead: () =>
+    apiFetch<{ message?: string } | null>("/api/notifications/read-all", {
+      method: "POST",
+      auth: true,
+    }),
+
+  // ---------- Tickets ----------
+  listTickets: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    apiFetch<Ticket[] | Paginated<Ticket>>("/api/tickets", {
+      query: params,
+      auth: true,
+    }),
+  getTicket: (id: string) =>
+    apiFetch<Ticket>(`/api/tickets/${id}`, { auth: true }),
+  createTicket: (body: TicketInput) =>
+    apiFetch<Ticket | { message?: string; id?: string }>("/api/tickets", {
+      method: "POST",
+      auth: true,
+      body,
+    }),
+  replyTicket: (id: string, content: string) =>
+    apiFetch<TicketReply | { message?: string }>(`/api/tickets/${id}/replies`, {
+      method: "POST",
+      auth: true,
+      body: { content },
+    }),
+  closeTicket: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/tickets/${id}/close`, {
+      method: "POST",
+      auth: true,
+    }),
+  reopenTicket: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/tickets/${id}/reopen`, {
+      method: "POST",
+      auth: true,
+    }),
+
+  // ---------- Public votes (公投) ----------
+  listVotes: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    apiFetch<Vote[] | Paginated<Vote>>("/api/votes", { query: params }),
+  getVote: (id: string) =>
+    apiFetch<Vote>(`/api/votes/${id}`),
+  castVote: (id: string, optionId: string) =>
+    apiFetch<{ voted: boolean; option_id: string } | { message?: string }>(
+      `/api/votes/${id}/vote`,
+      { method: "POST", auth: true, body: { option_id: optionId } },
+    ),
+
+  // ---------- Uploads (chunked + presigned URL) ----------
+  initUpload: (body: UploadInitInput) =>
+    apiFetch<UploadInitResponse>("/api/uploads/init", {
+      method: "POST",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  /** Notify the server that all chunks have been uploaded and the resource should be finalized. */
+  completeUpload: (body: UploadCompleteInput) =>
+    apiFetch<{ message?: string; video_id?: string; url?: string }>(
+      "/api/uploads/complete",
+      {
+        method: "POST",
+        auth: true,
+        body: body as unknown as Record<string, unknown>,
+      },
+    ),
+  /** Abort an in-progress upload. */
+  abortUpload: (uploadId: string) =>
+    apiFetch<{ message?: string } | null>(`/api/uploads/${uploadId}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+
+  // ---------- Subtitles ----------
+  listSubtitles: (videoId: string) =>
+    apiFetch<SubtitleTrack[]>(`/api/videos/${videoId}/subtitles`),
+
+  // ---------- Collections (合集) ----------
+  listCollections: (params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<CollectionListItem[] | Paginated<CollectionListItem>>(
+      "/api/collections",
+      { query: params },
+    ),
+  listCollectionsByUser: (uid: number, params: { limit?: number; offset?: number } = {}) =>
+    apiFetch<CollectionListItem[] | Paginated<CollectionListItem>>(
+      `/api/users/${uid}/collections`,
+      { query: params },
+    ),
+  getCollection: (id: string) =>
+    apiFetch<CollectionDetail>(`/api/collections/${id}`),
+  createCollection: (body: CollectionInput) =>
+    apiFetch<CollectionDetail | { message?: string; id?: string }>(
+      "/api/collections",
+      { method: "POST", auth: true, body },
+    ),
+  updateCollection: (id: string, body: Partial<CollectionInput>) =>
+    apiFetch<CollectionDetail | { message?: string }>(`/api/collections/${id}`, {
+      method: "PUT",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  deleteCollection: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/collections/${id}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+  addVideoToCollection: (collectionId: string, videoId: string) =>
+    apiFetch<{ message?: string } | null>(
+      `/api/collections/${collectionId}/videos`,
+      { method: "POST", auth: true, body: { video_id: videoId } },
+    ),
+  removeVideoFromCollection: (collectionId: string, videoId: string) =>
+    apiFetch<{ message?: string } | null>(
+      `/api/collections/${collectionId}/videos/${videoId}`,
+      { method: "DELETE", auth: true },
+    ),
+
+  // ---------- Report user ----------
+  reportUser: (body: ReportUserInput) =>
+    apiFetch<{ message?: string; id?: string } | null>("/api/reports", {
+      method: "POST",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+
+  // ---------- Admin: user moderation ----------
+  adminUserAction: (body: AdminUserActionInput) =>
+    apiFetch<{ message?: string } | null>("/api/admin/users/action", {
+      method: "POST",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  /** Convenience wrappers used by the admin UI. */
+  adminBanUser: (uid: number | string, reason?: string, duration?: string) =>
+    api.adminUserAction({ uid, action: "ban", reason, duration }),
+  adminUnbanUser: (uid: number | string) =>
+    api.adminUserAction({ uid, action: "unban" }),
+  adminSetUserRole: (uid: number | string, role: string) =>
+    api.adminUserAction({ uid, action: "set_role", role }),
+
+  // ---------- Admin: report moderation ----------
+  adminCloseReport: (id: string, resolution?: string) =>
+    apiFetch<{ message?: string } | null>(`/api/admin/reports/${id}/close`, {
+      method: "POST",
+      auth: true,
+      body: resolution ? { resolution } : undefined,
+    }),
+  adminMarkReportProcessed: (id: string, resolution?: string) =>
+    apiFetch<{ message?: string } | null>(`/api/admin/reports/${id}/resolve`, {
+      method: "POST",
+      auth: true,
+      body: resolution ? { resolution } : undefined,
     }),
 };
 

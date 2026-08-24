@@ -353,18 +353,111 @@ Zerexa Video 的远端 API（`https://video.zerexa.net`）没有启用 CORS，�
 
 以下功能已在代码中预留接口或部分实现，可在后续迭代补全：
 
-- 视频上传（分片上传 + 直传预签名 URL）
-- 专栏（`/api/articles`）发布与阅读
-- 动态（`/api/dynamics`）时间线
-- 私信与站内信 UI
-- 工单系统
-- 公投详情与投票
-- 后台用户封禁 / 解禁 / 角色变更（依赖上游 API 开放对应路由）
-- 后台举报关闭 / 标记已处理（同上）
-- 后台公告编辑（同上）
-- 字幕加载与切换
-- 视频合集编辑
-- 用户举报弹窗的完整表单
+- 视频上传（分片上传 + 直传预签名 URL）✅ 已完成
+- 专栏（`/api/articles`）发布与阅读 ✅ 已完成
+- 动态（`/api/dynamics`）时间线 ✅ 已完成
+- 私信与站内信 UI ✅ 已完成
+- 工单系统 ✅ 已完成
+- 公投详情与投票 ✅ 已完成
+- 后台用户封禁 / 解禁 / 角色变更（依赖上游 API 开放对应路由）✅ 已完成
+- 后台举报关闭 / 标记已处理（同上）✅ 已完成
+- 后台公告编辑（同上）✅ 已完成
+- 字幕加载与切换 ✅ 已完成
+- 视频合集编辑 ✅ 已完成
+- 用户举报弹窗的完整表单 ✅ 已完成
+
+---
+
+## 社区功能（v0.3 扩展）
+
+下列功能均已在前端完整实现，并通过 dev server 路由验证。所有 API 调用通过
+`/api/zerexa` 代理转发到上游 `https://video.zerexa.net`；当上游对应路由暂未
+开放时，前端会以友好的方式呈现错误而不崩溃。
+
+### 视频上传
+
+- 路由：`?view=upload`
+- 流程：`POST /api/uploads/init` -> (PUT 预签名 URL 直传 或 分片直传 S3) -> `POST /api/uploads/complete`
+- 客户端使用 `XMLHttpRequest` 监听上传进度，分片大小由服务端 `chunk_size` 字段决定
+- 上传完成后跳转到视频详情（`?v=<id>`）
+
+### 专栏
+
+- 路由：`?view=articles` | `?view=article&aid=<id>` | `?view=article-edit` | `?view=article-edit&aid=<id>`
+- API：`GET / POST / PUT / DELETE /api/articles`，`POST /api/articles/{id}/like`
+- 支持 HTML 富文本（白名单标签：`p / h1-3 / strong / em / ul / ol / li / blockquote / code / pre / br`），其余字符自动转义
+- 作者可编辑 / 删除自己的专栏
+
+### 动态
+
+- 路由：`?view=dynamics`
+- API：`GET / POST / DELETE /api/dynamics`，`POST /api/dynamics/{id}/like`
+- 时间线展示，支持文字 + 多个媒体 URL（图片缩略图自动渲染，其它文件以文件名展示）
+- 作者可删除自己的动态
+
+### 私信与站内信
+
+- 路由：`?view=messages` | `?view=notifications`
+- API：
+  - `GET / POST /api/messages/conversations`、`GET /api/messages/conversations/{id}`、`POST /api/messages`、`POST /api/messages/conversations/{id}/read`
+  - `GET /api/notifications`、`POST /api/notifications/{id}/read`、`POST /api/notifications/read-all`
+- 双栏布局：左侧会话列表 + 未读徽章，右侧消息流 + 输入框（Enter 发送 / Shift+Enter 换行）
+- 通知页支持单条 / 全部标记已读，带未读计数徽章
+
+### 工单系统
+
+- 路由：`?view=tickets` | `?view=ticket&tid=<id>` | `?view=ticket-new`
+- API：`GET / POST /api/tickets`、`GET /api/tickets/{id}`、`POST /api/tickets/{id}/replies`、`POST /api/tickets/{id}/close`、`POST /api/tickets/{id}/reopen`
+- 分类：综合咨询 / 账号 / 内容申诉 / 充值 / Bug / 其它
+- 优先级：低 / 普通 / 高 / 紧急
+- 客服回复带"客服"标签，工单可关闭 / 重新打开
+
+### 公投
+
+- 路由：`?view=votes` | `?view=vote&vote=<id>`
+- API：`GET /api/votes`、`GET /api/votes/{id}`、`POST /api/votes/{id}/vote`
+- 投票前显示选项按钮，投票后显示百分比 + 票数 + 进度条
+- 已结束 / 已投票 / 未投票三种状态分别有对应的提示横幅
+
+### 字幕
+
+- 播放器自动通过 `GET /api/videos/{id}/subtitles` 拉取字幕轨道
+- 字幕按钮位于播放器右下角控制条，弹窗展示所有可用字幕
+- 切换通过原生 `<track kind="subtitles">` + `textTracks.mode = "showing" | "disabled"`
+- 支持键盘快捷键 `c` 打开字幕菜单
+
+### 视频合集
+
+- 路由：`?view=collections` | `?view=collection&cid=<id>` | `?view=collection-edit` | `?view=collection-edit&cid=<id>`
+- API：`GET / POST / PUT / DELETE /api/collections`、`GET /api/collections/{id}`、`POST /api/collections/{id}/videos`、`DELETE /api/collections/{id}/videos/{vid}`
+- 编辑器内可输入视频 ID 直接添加 / 移除到合集
+- 合集详情页以卡片网格展示所有视频
+
+### 用户举报弹窗
+
+- 组件：`src/components/report-user-dialog.tsx`
+- API：`POST /api/reports`（`{ target_uid, target_type, target_id?, reason, description?, category? }`）
+- 8 个分类：垃圾广告 / 辱骂 / 色情 / 暴力 / 违法 / 版权 / 虚假信息 / 其它
+- 通过 `useReportUser()` hook 在任何位置触发：`openReport({ uid, name, type, id })`
+
+### 后台用户封禁 / 解禁 / 角色变更
+
+- 入口：`?view=admin&section=users`
+- API：`POST /api/admin/users/action`（`{ uid, action: "ban" | "unban" | "set_role", reason?, duration?, role? }`）
+- 每行右侧带"封禁 / 解禁 / 角色"三个操作按钮，封禁弹窗支持填写理由与时长
+- 角色弹窗下拉选择：普通用户 / 版主 / 管理员 / 超级管理员
+
+### 后台举报关闭 / 标记已处理
+
+- 入口：`?view=admin&section=reports`
+- API：`POST /api/admin/reports/{id}/close` 与 `POST /api/admin/reports/{id}/resolve`
+- 每行带"已处理"与"关闭"两个操作，弹窗可附处理说明
+
+### 后台公告编辑
+
+- 入口：`?view=admin&section=announcements`
+- API：`POST /api/admin/announcements`（携带 `id + action: "update"` 用于编辑）
+- 编辑弹窗预填当前标题 / 正文 / 上线状态，保存后实时刷新列表
 
 ---
 

@@ -21,6 +21,13 @@ import {
   BellIcon,
   UserIcon,
   TvIcon,
+  ArticleIcon,
+  DynamicIcon,
+  MailIcon,
+  TicketIcon,
+  VoteIcon,
+  UploadIcon,
+  CollectionIcon,
   Logo,
 } from "@/components/icons";
 import { useRoute } from "@/lib/route";
@@ -32,7 +39,19 @@ interface AppNavProps {
 }
 
 export function AppNav({ open, onOpenChange, categories }: AppNavProps) {
-  const { goHome, goCategory, goProfile } = useRoute();
+  const {
+    goHome,
+    goCategory,
+    goProfile,
+    goArticles,
+    goDynamics,
+    goMessages,
+    goNotifications,
+    goTickets,
+    goVotes,
+    goUpload,
+    goCollections,
+  } = useRoute();
 
   const go = (fn: () => void) => () => {
     fn();
@@ -50,11 +69,7 @@ export function AppNav({ open, onOpenChange, categories }: AppNavProps) {
         </SheetHeader>
 
         <div className="flex flex-col gap-1 px-2 py-3">
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={go(goHome)}
-          >
+          <Button variant="ghost" className="justify-start" onClick={go(goHome)}>
             <CompassIcon size={18} className="mr-2" />
             推荐
           </Button>
@@ -66,29 +81,44 @@ export function AppNav({ open, onOpenChange, categories }: AppNavProps) {
             <FireIcon size={18} className="mr-2" />
             热门
           </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={go(goProfile)}
-          >
-            <UserIcon size={18} className="mr-2" />
-            个人中心
+          <Button variant="ghost" className="justify-start" onClick={go(goDynamics)}>
+            <DynamicIcon size={18} className="mr-2" />
+            动态
           </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={go(goHome)}
-          >
-            <BellIcon size={18} className="mr-2" />
-            公告
+          <Button variant="ghost" className="justify-start" onClick={go(goArticles)}>
+            <ArticleIcon size={18} className="mr-2" />
+            专栏
           </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={go(goHome)}
-          >
+          <Button variant="ghost" className="justify-start" onClick={go(goCollections)}>
+            <CollectionIcon size={18} className="mr-2" />
+            合集
+          </Button>
+          <Button variant="ghost" className="justify-start" onClick={go(goVotes)}>
             <TvIcon size={18} className="mr-2" />
             公投
+          </Button>
+          <Button variant="ghost" className="justify-start" onClick={go(goUpload)}>
+            <UploadIcon size={18} className="mr-2" />
+            投稿
+          </Button>
+        </div>
+
+        <div className="border-t border-border px-2 py-3">
+          <Button variant="ghost" className="justify-start" onClick={go(goMessages)}>
+            <MailIcon size={18} className="mr-2" />
+            私信
+          </Button>
+          <Button variant="ghost" className="justify-start" onClick={go(goNotifications)}>
+            <BellIcon size={18} className="mr-2" />
+            通知
+          </Button>
+          <Button variant="ghost" className="justify-start" onClick={go(goTickets)}>
+            <TicketIcon size={18} className="mr-2" />
+            工单
+          </Button>
+          <Button variant="ghost" className="justify-start" onClick={go(goProfile)}>
+            <UserIcon size={18} className="mr-2" />
+            个人中心
           </Button>
         </div>
 

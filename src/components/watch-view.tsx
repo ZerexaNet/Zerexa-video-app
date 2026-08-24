@@ -236,6 +236,7 @@ export function WatchView({ videoId }: WatchViewProps) {
             poster={cover ?? undefined}
             danmaku={danmaku}
             onSendDanmaku={onSendDanmaku}
+            videoId={videoId}
           />
 
           {/* Title */}

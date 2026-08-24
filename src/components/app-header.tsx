@@ -6,6 +6,10 @@
  * Brand on the left, centred search box, right-hand cluster with
  * theme switcher and account controls. The bar is sticky and
  * shrinks on scroll for a tighter feel on long pages.
+ *
+ * On desktop the bar also hosts a small quick-launch icon row
+ * (upload / dynamics / messages / tickets / votes / articles /
+ * collections) so primary destinations are one click away.
  */
 
 import * as React from "react";
@@ -20,6 +24,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { AuthDialog } from "@/components/auth-dialog";
 import {
@@ -32,15 +42,17 @@ import {
   MenuIcon,
   CloseIcon,
   DashboardIcon,
+  ArticleIcon,
+  DynamicIcon,
+  MailIcon,
+  TicketIcon,
+  VoteIcon,
+  UploadIcon,
+  CollectionIcon,
+  BellIcon,
 } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { useRoute } from "@/lib/route";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface HeaderProps {
   onOpenNav: () => void;
@@ -54,7 +66,20 @@ export function AppHeader({
   showAdminEntry,
 }: HeaderProps) {
   const { user, logout } = useAuth();
-  const { goHome, goSearch, goProfile, goAdmin } = useRoute();
+  const {
+    goHome,
+    goSearch,
+    goProfile,
+    goAdmin,
+    goArticles,
+    goDynamics,
+    goMessages,
+    goNotifications,
+    goTickets,
+    goVotes,
+    goUpload,
+    goCollections,
+  } = useRoute();
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -94,6 +119,29 @@ export function AppHeader({
     setAuthMode("register");
     setAuthOpen(true);
   };
+
+  // Quick-launch icons rendered inline on md+ screens. Each is
+  // wrapped in a tooltip so the icon meaning is discoverable.
+  const quickLinks = [
+    { icon: UploadIcon, label: "投稿", action: goUpload, requiresAuth: true },
+    { icon: DynamicIcon, label: "动态", action: goDynamics },
+    { icon: ArticleIcon, label: "专栏", action: goArticles },
+    { icon: CollectionIcon, label: "合集", action: goCollections },
+    { icon: VoteIcon, label: "公投", action: goVotes },
+    { icon: TicketIcon, label: "工单", action: goTickets, requiresAuth: true },
+    {
+      icon: MailIcon,
+      label: "私信",
+      action: goMessages,
+      requiresAuth: true,
+    },
+    {
+      icon: BellIcon,
+      label: "通知",
+      action: goNotifications,
+      requiresAuth: true,
+    },
+  ];
 
   return (
     <header
@@ -152,6 +200,38 @@ export function AppHeader({
           </Button>
         </form>
 
+        {/* Quick-launch icons (desktop only) */}
+        <TooltipProvider delayDuration={300}>
+          <div className="hidden items-center gap-0.5 md:flex">
+            {quickLinks.map((l) => {
+              const Icon = l.icon;
+              const handleClick = () => {
+                if (l.requiresAuth && !user) {
+                  openLogin();
+                  return;
+                }
+                l.action();
+              };
+              return (
+                <Tooltip key={l.label}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      onClick={handleClick}
+                      aria-label={l.label}
+                    >
+                      <Icon size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{l.label}</TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
+
         {/* Right cluster */}
         <div className="ml-auto flex items-center gap-1">
           <ThemeSwitcher />
@@ -185,6 +265,39 @@ export function AppHeader({
                 <DropdownMenuItem onClick={goProfile}>
                   <UserIcon size={16} className="mr-2" />
                   个人主页
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goDynamics}>
+                  <DynamicIcon size={16} className="mr-2" />
+                  动态
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goArticles}>
+                  <ArticleIcon size={16} className="mr-2" />
+                  专栏
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goCollections}>
+                  <CollectionIcon size={16} className="mr-2" />
+                  合集
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goUpload}>
+                  <UploadIcon size={16} className="mr-2" />
+                  投稿
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => goMessages()}>
+                  <MailIcon size={16} className="mr-2" />
+                  私信
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goNotifications}>
+                  <BellIcon size={16} className="mr-2" />
+                  通知
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goTickets}>
+                  <TicketIcon size={16} className="mr-2" />
+                  我的工单
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={goVotes}>
+                  <VoteIcon size={16} className="mr-2" />
+                  公投
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={goProfile}>
                   <HistoryIcon size={16} className="mr-2" />

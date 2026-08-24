@@ -9,6 +9,7 @@
  *   - Click-to-toggle-play on the video surface
  *   - Keyboard shortcuts (space, arrows, f, m)
  *   - Danmaku send box
+ *   - Subtitle track loading + switching (VTT/SRT through <track>)
  */
 
 import * as React from "react";
@@ -17,19 +18,24 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   PlayIcon,
   PauseIcon,
   VolumeIcon,
   MuteIcon,
   FullscreenIcon,
-  Settings2Icon,
   SendIcon,
+  CaptionsIcon,
 } from "@/components/icons";
 import {
   DanmakuLayer,
   type DanmakuHandle,
 } from "@/components/danmaku-layer";
-import { type DanmakuItem } from "@/lib/api";
+import { type DanmakuItem, type SubtitleTrack, api } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -40,9 +46,20 @@ interface PlayerProps {
   poster?: string | null;
   danmaku: DanmakuItem[];
   onSendDanmaku: (text: string, color: string) => Promise<void>;
+  /** Optional list of subtitle tracks for the current video. */
+  subtitles?: SubtitleTrack[];
+  /** Optional videoId used to lazy-load subtitles when not provided. */
+  videoId?: string;
 }
 
-export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps) {
+export function VideoPlayer({
+  src,
+  poster,
+  danmaku,
+  onSendDanmaku,
+  subtitles: initialSubtitles,
+  videoId,
+}: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const danmakuRef = useRef<DanmakuHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,9 +75,51 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
   const [danmakuColor, setDanmakuColor] = useState("#FFFFFF");
   const [sending, setSending] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>(initialSubtitles ?? []);
+  const [activeSubtitle, setActiveSubtitle] = useState<SubtitleTrack | null>(null);
+  const [subtitleOpen, setSubtitleOpen] = useState(false);
+  const [subtitleLoading, setSubtitleLoading] = useState(!initialSubtitles && !!videoId);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Lazy-load subtitles when only videoId is provided
+  useEffect(() => {
+    if (initialSubtitles && initialSubtitles.length > 0) {
+      setSubtitles(initialSubtitles);
+      setSubtitleLoading(false);
+      // Pick default track if any
+      const def = initialSubtitles.find((t) => t.default) ?? null;
+      setActiveSubtitle(def);
+      return;
+    }
+    if (!videoId) {
+      setSubtitleLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSubtitleLoading(true);
+    (async () => {
+      try {
+        const tracks = await api.listSubtitles(videoId);
+        if (cancelled) return;
+        const resolved = (tracks ?? []).map((t) => ({
+          ...t,
+          url: api.resolveAsset(t.url) ?? t.url,
+        }));
+        setSubtitles(resolved);
+        const def = resolved.find((t) => t.default) ?? null;
+        setActiveSubtitle(def);
+      } catch {
+        if (!cancelled) setSubtitles([]);
+      } finally {
+        if (!cancelled) setSubtitleLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSubtitles, videoId]);
 
   // Sync video events
   useEffect(() => {
@@ -146,6 +205,29 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
     }
   };
 
+  // Switch subtitle track by writing to <track>.mode
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const tracks = v.textTracks;
+    for (let i = 0; i < tracks.length; i++) {
+      const t = tracks[i];
+      // Match by label (we set the track label to its language)
+      const targetLabel = activeSubtitle?.language ?? activeSubtitle?.label ?? "";
+      if (t.label === targetLabel || t.language === activeSubtitle?.language) {
+        t.mode = "showing";
+      } else if (t.mode === "showing") {
+        t.mode = "disabled";
+      }
+    }
+    // If no active subtitle, disable all
+    if (!activeSubtitle) {
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = "disabled";
+      }
+    }
+  }, [activeSubtitle]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -170,6 +252,10 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
           break;
         case "d":
           setDanmakuOn((s) => !s);
+          break;
+        case "c":
+          // Cycle through subtitles
+          setSubtitleOpen(true);
           break;
       }
     };
@@ -254,7 +340,22 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
         onDoubleClick={toggleFullscreen}
         preload="metadata"
         crossOrigin="anonymous"
-      />
+      >
+        {/* Subtitle tracks */}
+        {subtitles.map((t) => {
+          const isActive = activeSubtitle?.url === t.url;
+          return (
+            <track
+              key={t.id ?? t.url}
+              kind="subtitles"
+              src={t.url}
+              srcLang={t.language}
+              label={t.label ?? t.language}
+              default={isActive}
+            />
+          );
+        })}
+      </video>
 
       {/* Danmaku overlay */}
       <DanmakuLayer
@@ -362,6 +463,83 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
               />
             </div>
           </div>
+
+          {/* Subtitle selector */}
+          <Popover open={subtitleOpen} onOpenChange={setSubtitleOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-9 px-2 text-xs text-white hover:bg-white/15 ${
+                  activeSubtitle ? "bg-white/15" : "opacity-70"
+                }`}
+                aria-label="切换字幕"
+                title="字幕"
+              >
+                <CaptionsIcon size={16} />
+                {activeSubtitle && (
+                  <span className="ml-1 hidden sm:inline">
+                    {activeSubtitle.label ?? activeSubtitle.language}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-56 p-1"
+              side="top"
+              align="center"
+            >
+              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                字幕
+              </div>
+              <button
+                onClick={() => {
+                  setActiveSubtitle(null);
+                  setSubtitleOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-accent",
+                  !activeSubtitle && "bg-accent/60",
+                )}
+              >
+                <span>关闭字幕</span>
+                {!activeSubtitle && <span className="text-xs">●</span>}
+              </button>
+              {subtitleLoading ? (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  加载中...
+                </p>
+              ) : subtitles.length === 0 ? (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  此视频暂无字幕
+                </p>
+              ) : (
+                subtitles.map((t) => {
+                  const isActive = activeSubtitle?.url === t.url;
+                  return (
+                    <button
+                      key={t.id ?? t.url}
+                      onClick={() => {
+                        setActiveSubtitle(t);
+                        setSubtitleOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-accent",
+                        isActive && "bg-accent/60",
+                      )}
+                    >
+                      <span className="truncate">
+                        {t.label ?? t.language}
+                      </span>
+                      <span className="ml-2 text-[10px] text-muted-foreground">
+                        {t.format?.toUpperCase() ?? "VTT"}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </PopoverContent>
+          </Popover>
 
           {/* Danmaku input */}
           <form onSubmit={sendDanmaku} className="ml-2 flex flex-1 items-center gap-2">

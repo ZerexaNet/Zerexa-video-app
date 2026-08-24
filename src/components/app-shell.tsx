@@ -4,9 +4,10 @@
  * App shell.
  *
  * Hosts the global header, side drawer, and the active view
- * (home / watch / search / category / profile / admin). The view
- * is selected by the route store, which is hydrated from URL
- * search params on mount.
+ * (home / watch / search / category / profile / admin, plus
+ * articles / dynamics / messages / tickets / votes / upload /
+ * collections). The view is selected by the route store, which is
+ * hydrated from URL search params on mount.
  */
 
 import { useEffect, useState } from "react";
@@ -18,6 +19,25 @@ import { WatchView } from "@/components/watch-view";
 import { SearchView } from "@/components/search-view";
 import { CategoryView } from "@/components/category-view";
 import { ProfileView } from "@/components/profile-view";
+import {
+  ArticlesList,
+  ArticleDetail,
+  ArticleEditor,
+} from "@/components/articles-view";
+import { DynamicsView } from "@/components/dynamics-view";
+import { MessagesView } from "@/components/messages-view";
+import {
+  TicketsList,
+  TicketCreate,
+  TicketDetail,
+} from "@/components/tickets-view";
+import { VotesList, VoteDetail } from "@/components/vote-view";
+import { UploadView } from "@/components/upload-view";
+import {
+  CollectionsList,
+  CollectionDetailView,
+  CollectionEditor,
+} from "@/components/collections-view";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { useRoute } from "@/lib/route";
 import { useAuth } from "@/lib/auth";
@@ -41,11 +61,6 @@ export function AppShell() {
   // own header / sidebar layout. We do NOT render the public
   // header / footer around it.
   if (view.kind === "admin") {
-    // If the user is not signed in yet (initial render before
-    // useAuth resolves), we still render the admin shell - it
-    // will display the appropriate "needs login" banner. Once
-    // auth resolves, the dashboard queries will start firing
-    // with the token attached.
     return <AdminShell section={view.section} />;
   }
 
@@ -68,6 +83,27 @@ export function AppShell() {
         {view.kind === "search" && <SearchView q={view.q} />}
         {view.kind === "category" && <CategoryView category={view.category} />}
         {view.kind === "profile" && <ProfileView />}
+        {view.kind === "articles" && <ArticlesList />}
+        {view.kind === "article" && <ArticleDetail articleId={view.articleId} />}
+        {view.kind === "articleEdit" && <ArticleEditor articleId={view.articleId} />}
+        {view.kind === "dynamics" && <DynamicsView />}
+        {view.kind === "messages" && (
+          <MessagesView initialConversationId={view.conversationId} />
+        )}
+        {view.kind === "notifications" && <MessagesView />}
+        {view.kind === "tickets" && <TicketsList />}
+        {view.kind === "ticket" && <TicketDetail ticketId={view.ticketId} />}
+        {view.kind === "ticketNew" && <TicketCreate />}
+        {view.kind === "votes" && <VotesList />}
+        {view.kind === "vote" && <VoteDetail voteId={view.voteId} />}
+        {view.kind === "upload" && <UploadView />}
+        {view.kind === "collections" && <CollectionsList />}
+        {view.kind === "collection" && (
+          <CollectionDetailView collectionId={view.collectionId} />
+        )}
+        {view.kind === "collectionEdit" && (
+          <CollectionEditor collectionId={view.collectionId} />
+        )}
       </main>
 
       <AppFooter />

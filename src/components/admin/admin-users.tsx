@@ -4,19 +4,33 @@
  * Admin users view.
  *
  * Lists users from /api/admin/users with role / banned filters.
- * The upstream API does not currently expose ban / unban / set-role
- * routes through paths the front-end can call directly, so the
- * table is read-only with a "view profile" deep-link.
- *
- * A search box filters the loaded rows client-side (the upstream
- * does not advertise a `q=` query parameter for users).
+ * Provides ban / unban / set-role actions via POST
+ * /api/admin/users/action. Each action opens a small dialog so
+ * the operator can provide a reason / duration / role.
  */
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type AdminUser } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AdminSectionHeader,
   AdminTable,
@@ -28,7 +42,14 @@ import {
   asArray,
 } from "@/components/admin/admin-shared";
 import { AdminRefreshButton } from "@/components/admin/admin-shell";
-import { UsersIcon, SearchIcon } from "@/components/icons";
+import {
+  UsersIcon,
+  SearchIcon,
+  ShieldIcon,
+  ShieldOffIcon,
+  PencilSquareIcon,
+} from "@/components/icons";
+import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "@/lib/format";
 
 type RoleFilter = "all" | "admin" | "member" | "banned";
@@ -41,14 +62,16 @@ const ROLE_FILTERS: { id: RoleFilter; label: string }[] = [
 ];
 
 export function AdminUsers() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("all");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const pageSize = 50;
+  const [actionTarget, setActionTarget] = React.useState<AdminUser | null>(null);
+  const [actionKind, setActionKind] = React.useState<"ban" | "unban" | "set_role" | null>(null);
 
-  // We fetch a generous slice and filter client-side; the upstream
-  // endpoint shape is opaque to us so we keep it simple.
   const query = useQuery({
     queryKey: ["admin", "users", roleFilter, refreshKey],
     queryFn: () =>
@@ -63,8 +86,7 @@ export function AdminUsers() {
 
   const allItems = asArray<AdminUser>(query.data);
 
-  // Client-side filter for member vs all (since the API may not
-  // support role=member explicitly) and for the search box.
+  // Client-side filter for member vs all and for the search box
   const items = allItems.filter((u) => {
     if (roleFilter === "member") {
       const r = (u.role ?? "").toLowerCase();
@@ -79,11 +101,21 @@ export function AdminUsers() {
     return true;
   });
 
+  const openAction = (u: AdminUser, kind: "ban" | "unban" | "set_role") => {
+    setActionTarget(u);
+    setActionKind(kind);
+  };
+
+  const closeAction = () => {
+    setActionTarget(null);
+    setActionKind(null);
+  };
+
   return (
     <div>
       <AdminSectionHeader
         title="用户管理"
-        description="查看全站注册用户。封禁 / 解禁 / 角色变更由远端服务直接管理，前端当前以只读视图呈现。"
+        description="查看注册用户并执行封禁 / 解禁 / 角色变更。操作通过 POST /api/admin/users/action 提交。"
         actions={
           <AdminRefreshButton
             loading={query.isFetching}
@@ -158,6 +190,7 @@ export function AdminUsers() {
               <Th>角色</Th>
               <Th className="hidden sm:table-cell">注册时间</Th>
               <Th className="hidden lg:table-cell">UID / ID</Th>
+              <Th>操作</Th>
             </tr>
           }
         >
@@ -166,6 +199,7 @@ export function AdminUsers() {
               u.is_banned ||
               u.banned ||
               (u.status && String(u.status).toLowerCase() === "banned");
+            const uid = u.uid ?? u.id;
             return (
               <tr key={u.id ?? u.uid ?? u.username} className="hover:bg-accent/40">
                 <Td>
@@ -200,6 +234,40 @@ export function AdminUsers() {
                 <Td className="hidden lg:table-cell text-xs text-muted-foreground">
                   {u.uid ? `UID: ${u.uid}` : u.id?.slice(0, 8)}
                 </Td>
+                <Td>
+                  <div className="flex items-center gap-1">
+                    {banned ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                        onClick={() => openAction(u, "unban")}
+                      >
+                        <ShieldIcon size={12} className="mr-1" />
+                        解禁
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-red-600 hover:bg-red-500/10 hover:text-red-700"
+                        onClick={() => openAction(u, "ban")}
+                      >
+                        <ShieldOffIcon size={12} className="mr-1" />
+                        封禁
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => openAction(u, "set_role")}
+                    >
+                      <PencilSquareIcon size={12} className="mr-1" />
+                      角色
+                    </Button>
+                  </div>
+                </Td>
               </tr>
             );
           })}
@@ -229,6 +297,159 @@ export function AdminUsers() {
           下一页
         </Button>
       </div>
+
+      <UserActionDialog
+        user={actionTarget}
+        kind={actionKind}
+        open={!!actionTarget}
+        onOpenChange={(o) => !o && closeAction()}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: ["admin", "users"] });
+          closeAction();
+        }}
+      />
     </div>
+  );
+}
+
+function UserActionDialog({
+  user,
+  kind,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  user: AdminUser | null;
+  kind: "ban" | "unban" | "set_role" | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [reason, setReason] = React.useState("");
+  const [duration, setDuration] = React.useState("");
+  const [role, setRole] = React.useState<string>("member");
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) {
+      setReason("");
+      setDuration("");
+      setRole(user?.role ?? "member");
+    }
+  }, [open, user]);
+
+  if (!user || !kind) return null;
+
+  const title =
+    kind === "ban" ? `封禁 ${user.username}` :
+    kind === "unban" ? `解禁 ${user.username}` :
+    `变更 ${user.username} 的角色`;
+
+  const description =
+    kind === "ban"
+      ? "封禁后该用户将无法登录或发布内容。"
+      : kind === "unban"
+      ? "解除封禁后该用户可恢复正常使用。"
+      : "选择新的角色并提交。";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const uid = user.uid ?? user.id;
+      if (kind === "ban") {
+        await api.adminBanUser(uid, reason.trim() || undefined, duration.trim() || undefined);
+      } else if (kind === "unban") {
+        await api.adminUnbanUser(uid);
+      } else if (kind === "set_role") {
+        await api.adminSetUserRole(uid, role);
+      }
+      toast({ title: "操作成功" });
+      onDone();
+    } catch (err) {
+      toast({
+        title: "操作失败",
+        description: err instanceof Error ? err.message : "请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          {kind === "ban" && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="ban-reason">封禁理由（可选）</Label>
+                <Textarea
+                  id="ban-reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="记录封禁原因，便于审计"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ban-duration">封禁时长（可选）</Label>
+                <Input
+                  id="ban-duration"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  placeholder="如：7d / 30d / permanent（留空 = 永久）"
+                />
+              </div>
+            </>
+          )}
+          {kind === "set_role" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="user-role">新角色</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger id="user-role">
+                  <SelectValue placeholder="选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">普通用户 (member)</SelectItem>
+                  <SelectItem value="moderator">版主 (moderator)</SelectItem>
+                  <SelectItem value="admin">管理员 (admin)</SelectItem>
+                  <SelectItem value="superadmin">超级管理员 (superadmin)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving}
+              className={
+                kind === "ban"
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : ""
+              }
+            >
+              {saving ? "处理中..." : "确认"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

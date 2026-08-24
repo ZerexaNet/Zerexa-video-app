@@ -472,3 +472,133 @@ export const ClockIcon = (p: IconProps) => (
     <polyline points="12 6 12 12 16 14" />
   </Base>
 );
+
+// ---------- New icons for articles / dynamics / messages / tickets / votes
+// / uploads / subtitles / collections / report-user ----------
+
+export const ArticleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 4v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8.34a2 2 0 0 0-.59-1.42l-3.34-3.33A2 2 0 0 0 14.34 3H6c-1.1 0-2 .9-2 2z" />
+    <path d="M7 5v4h7V5" />
+    <path d="M7 13h10v2H7z" />
+    <path d="M7 17h10v2H7z" />
+  </Base>
+);
+
+export const DynamicIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+  </Base>
+);
+
+export const MessageIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+  </Base>
+);
+
+export const TicketIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M3 7v3a2 2 0 0 1 0 4v3c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-3a2 2 0 0 1 0-4V7c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2z" />
+    <line x1="13" y1="5" x2="13" y2="19" strokeDasharray="2 2" />
+  </Base>
+);
+
+export const VoteIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M3 3v18h18" />
+    <rect x="7" y="12" width="3" height="6" fill="currentColor" stroke="none" />
+    <rect x="12" y="8" width="3" height="10" fill="currentColor" stroke="none" />
+    <rect x="17" y="5" width="3" height="13" fill="currentColor" stroke="none" />
+  </Base>
+);
+
+export const UploadIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </Base>
+);
+
+export const CaptionsIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M7 12h2v2H7z" />
+    <path d="M11 12h2v2h-2z" />
+    <path d="M15 12h2v2h-2z" />
+  </Base>
+);
+
+export const CollectionIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </Base>
+);
+
+export const PaperPlaneIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M22 2L7 17l-5-5 20-10z" />
+    <path d="M11 13l-4 8 4-3" />
+  </Base>
+);
+
+export const PinIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 2v6" />
+    <path d="M5 8h14l-3 4v6l-4-2-4 2v-6L5 8z" />
+  </Base>
+);
+
+export const ReplyIcon = (p: IconProps) => (
+  <Base {...p}>
+    <polyline points="9 17 4 12 9 7" />
+    <path d="M4 12h11a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4h-3" />
+  </Base>
+);
+
+export const UnlockIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </Base>
+);
+
+export const ShieldOffIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <line x1="3" y1="3" x2="21" y2="21" />
+  </Base>
+);
+
+export const ShieldIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="M9 12l2 2 4-4" />
+  </Base>
+);
+
+export const PencilSquareIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </Base>
+);
+
+export const CheckSquareIcon = (p: IconProps) => (
+  <Base {...p}>
+    <polyline points="9 11 12 14 22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </Base>
+);
+
+export const XSquareIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <line x1="9" y1="9" x2="15" y2="15" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+  </Base>
+);

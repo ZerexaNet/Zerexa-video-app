@@ -3,16 +3,26 @@
 /**
  * Admin reports view.
  *
- * Lists reports from /api/admin/reports with status filter
- * (open / closed). The upstream API does not currently expose a
- * public "resolve" / "close" route, so the table is read-only
- * with target deep-link.
+ * Lists reports from /api/admin/reports with status filter.
+ * Per-row actions: 关闭 / 标记已处理（POST
+ * /api/admin/reports/{id}/close or /resolve). The admin can attach
+ * a resolution note that is persisted on the report record.
  */
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type AdminReport } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AdminSectionHeader,
   AdminTable,
@@ -24,8 +34,9 @@ import {
   asArray,
 } from "@/components/admin/admin-shared";
 import { AdminRefreshButton } from "@/components/admin/admin-shell";
-import { FlagIcon } from "@/components/icons";
+import { FlagIcon, XSquareIcon, CheckSquareIcon } from "@/components/icons";
 import { useRoute } from "@/lib/route";
+import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "@/lib/format";
 
 type ReportFilter = "open" | "closed" | undefined;
@@ -37,11 +48,18 @@ const FILTERS: { id: ReportFilter; label: string }[] = [
 ];
 
 export function AdminReports() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const { goWatch } = useRoute();
   const [filter, setFilter] = React.useState<ReportFilter>(undefined);
   const [page, setPage] = React.useState(0);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const pageSize = 20;
+
+  const [resolutionTarget, setResolutionTarget] = React.useState<AdminReport | null>(null);
+  const [resolutionKind, setResolutionKind] = React.useState<"close" | "resolve" | null>(null);
+  const [resolution, setResolution] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   const query = useQuery({
     queryKey: ["admin", "reports", filter, page, refreshKey],
@@ -56,11 +74,48 @@ export function AdminReports() {
 
   const items = asArray<AdminReport>(query.data);
 
+  const openResolution = (r: AdminReport, kind: "close" | "resolve") => {
+    setResolutionTarget(r);
+    setResolutionKind(kind);
+    setResolution("");
+  };
+
+  const closeResolution = () => {
+    setResolutionTarget(null);
+    setResolutionKind(null);
+    setResolution("");
+  };
+
+  const submitResolution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resolutionTarget || !resolutionKind) return;
+    setSaving(true);
+    try {
+      const note = resolution.trim() || undefined;
+      if (resolutionKind === "close") {
+        await api.adminCloseReport(resolutionTarget.id, note);
+      } else {
+        await api.adminMarkReportProcessed(resolutionTarget.id, note);
+      }
+      toast({ title: "操作成功" });
+      qc.invalidateQueries({ queryKey: ["admin", "reports"] });
+      closeResolution();
+    } catch (err) {
+      toast({
+        title: "操作失败",
+        description: err instanceof Error ? err.message : "请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <AdminSectionHeader
         title="举报处理"
-        description="查看社区提交的举报。点击目标可跳转到对应视频详情。"
+        description="查看社区提交的举报并执行关闭 / 标记已处理。每个操作可附带处理说明。"
         actions={
           <AdminRefreshButton
             loading={query.isFetching}
@@ -132,13 +187,13 @@ export function AdminReports() {
         >
           {items.map((r) => {
             const targetId = r.target_id ?? "";
-            const isVideo = (r.target_type ?? "").toLowerCase() === "video" ||
+            const isVideo =
+              (r.target_type ?? "").toLowerCase() === "video" ||
               (!!targetId && !r.target_type);
+            const status = (r.status ?? "").toLowerCase();
+            const isClosed = status === "closed";
             return (
-              <tr
-                key={r.id}
-                className="hover:bg-accent/40"
-              >
+              <tr key={r.id} className="hover:bg-accent/40">
                 <Td>
                   <p className="text-sm font-medium">
                     {r.reporter_username ?? `UID ${r.reporter_uid ?? "—"}`}
@@ -169,18 +224,43 @@ export function AdminReports() {
                   {r.created_at ? formatRelativeTime(r.created_at) : "—"}
                 </Td>
                 <Td>
-                  {isVideo && targetId ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7"
-                      onClick={() => goWatch(targetId)}
-                    >
-                      查看视频
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {isVideo && targetId ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7"
+                        onClick={() => goWatch(targetId)}
+                      >
+                        查看
+                      </Button>
+                    ) : null}
+                    {!isClosed && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                          onClick={() => openResolution(r, "resolve")}
+                        >
+                          <CheckSquareIcon size={12} className="mr-1" />
+                          已处理
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-red-600 hover:bg-red-500/10 hover:text-red-700"
+                          onClick={() => openResolution(r, "close")}
+                        >
+                          <XSquareIcon size={12} className="mr-1" />
+                          关闭
+                        </Button>
+                      </>
+                    )}
+                    {isClosed && (
+                      <span className="text-xs text-muted-foreground">已关闭</span>
+                    )}
+                  </div>
                 </Td>
               </tr>
             );
@@ -211,6 +291,59 @@ export function AdminReports() {
           下一页
         </Button>
       </div>
+
+      {/* Resolution dialog */}
+      <Dialog
+        open={!!resolutionTarget}
+        onOpenChange={(o) => !o && closeResolution()}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {resolutionKind === "close" ? "关闭举报" : "标记举报已处理"}
+            </DialogTitle>
+            <DialogDescription>
+              可附上处理说明（可选），便于后续审计。提交后该举报将标记为
+              {resolutionKind === "close" ? "已关闭" : "已处理"}。
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitResolution} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="resolution">处理说明（可选）</Label>
+              <Textarea
+                id="resolution"
+                value={resolution}
+                onChange={(e) => setResolution(e.target.value)}
+                rows={4}
+                maxLength={500}
+                placeholder="如：已联系当事人核实 / 已删除违规内容 / 已封禁对应用户"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={closeResolution}
+              >
+                取消
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={saving}
+                className={
+                  resolutionKind === "close"
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : ""
+                }
+              >
+                {saving ? "处理中..." : "确认"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

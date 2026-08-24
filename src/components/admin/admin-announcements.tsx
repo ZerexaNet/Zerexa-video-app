@@ -4,7 +4,8 @@
  * Admin announcements view.
  *
  * Lists announcements from /api/admin/announcements and offers:
- *  - 新建公告   -> POST /api/admin/announcements {title, content, is_active}
+ *  - 新建公告    -> POST /api/admin/announcements {title, content, is_active}
+ *  - 编辑公告    -> POST /api/admin/announcements {id, action: "update", title, content, is_active}
  *  - 切换上线    -> POST /api/admin/announcements {id, action: "update", is_active: !current}
  *  - 删除        -> POST /api/admin/announcements {id, action: "delete"}
  *
@@ -44,6 +45,7 @@ import {
   TrashIcon,
   BellIcon,
   CheckIcon,
+  PencilSquareIcon,
 } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -55,6 +57,7 @@ export function AdminAnnouncements() {
   const { user } = useAuth();
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [editTarget, setEditTarget] = React.useState<Announcement | null>(null);
 
   const query = useQuery({
     queryKey: ["admin", "announcements", refreshKey],
@@ -105,6 +108,32 @@ export function AdminAnnouncements() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: (body: {
+      id: string;
+      title: string;
+      content: string;
+      is_active: number;
+    }) =>
+      api.adminUpdateAnnouncement(body.id, {
+        title: body.title,
+        content: body.content,
+        is_active: body.is_active,
+      }),
+    onSuccess: () => {
+      toast({ title: "公告已更新" });
+      setEditTarget(null);
+      qc.invalidateQueries({ queryKey: ["admin", "announcements"] });
+    },
+    onError: (e: unknown) => {
+      toast({
+        title: "更新失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.adminDeleteAnnouncement(id),
     onSuccess: () => {
@@ -124,7 +153,7 @@ export function AdminAnnouncements() {
     <div>
       <AdminSectionHeader
         title="公告管理"
-        description="发布、上线、下线站点公告。新建通过 POST /api/admin/announcements 提交。"
+        description="发布、编辑、上线、下线站点公告。新建 / 编辑均通过 POST /api/admin/announcements 提交。"
         actions={
           <div className="flex items-center gap-2">
             <AdminRefreshButton
@@ -188,9 +217,6 @@ export function AdminAnnouncements() {
           }
         >
           {items.map((a) => {
-            // `is_active` is typed as number on the Announcement
-            // interface, but some upstreams return boolean. Accept
-            // both shapes.
             const isActive =
               a.is_active === 1 ||
               a.is_active === true ||
@@ -215,6 +241,16 @@ export function AdminAnnouncements() {
                 </Td>
                 <Td>
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => setEditTarget(a)}
+                      disabled={editMutation.isPending}
+                    >
+                      <PencilSquareIcon size={14} className="mr-1" />
+                      编辑
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -255,51 +291,102 @@ export function AdminAnnouncements() {
         </AdminTable>
       )}
 
-      <CreateAnnouncementDialog
+      <AnnouncementFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSubmit={(body) => createMutation.mutate(body)}
+        title="新建站点公告"
+        description="填写标题与正文，选择是否立即上线。提交后将在公告列表中显示。"
+        confirmLabel="发布"
         loading={createMutation.isPending}
+        onSubmit={(body) => createMutation.mutate({
+          title: body.title,
+          content: body.content,
+          is_active: body.is_active ? 1 : 0,
+        })}
+      />
+
+      <AnnouncementFormDialog
+        open={!!editTarget}
+        onOpenChange={(o) => !o && setEditTarget(null)}
+        title={`编辑公告: ${editTarget?.title ?? ""}`}
+        description="修改标题、正文或上线状态。"
+        confirmLabel="保存"
+        loading={editMutation.isPending}
+        initialTitle={editTarget?.title ?? ""}
+        initialContent={editTarget?.content ?? ""}
+        initialIsActive={
+          editTarget
+            ? editTarget.is_active === 1 ||
+              editTarget.is_active === true ||
+              (typeof editTarget.is_active === "number" && (editTarget.is_active as number) > 0)
+            : true
+        }
+        onSubmit={(body) => {
+          if (editTarget) {
+            editMutation.mutate({
+              id: editTarget.id,
+              ...body,
+              is_active: body.is_active ? 1 : 0,
+            });
+          }
+        }}
       />
     </div>
   );
 }
 
-function CreateAnnouncementDialog({
+/**
+ * Unified create / edit dialog. Reused by both the "新建" button
+ * and the per-row "编辑" button. When `initialTitle` etc. are
+ * provided, the form pre-populates on open.
+ */
+function AnnouncementFormDialog({
   open,
   onOpenChange,
-  onSubmit,
+  title,
+  description,
+  confirmLabel,
   loading,
+  initialTitle = "",
+  initialContent = "",
+  initialIsActive = true,
+  onSubmit,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  loading: boolean;
+  initialTitle?: string;
+  initialContent?: string;
+  initialIsActive?: boolean;
   onSubmit: (body: {
     title: string;
     content: string;
-    is_active: number;
+    is_active: boolean;
   }) => void;
-  loading: boolean;
 }) {
-  const [title, setTitle] = React.useState("");
-  const [content, setContent] = React.useState("");
-  const [isActive, setIsActive] = React.useState(true);
+  const [t, setT] = React.useState(initialTitle);
+  const [c, setC] = React.useState(initialContent);
+  const [isActive, setIsActive] = React.useState(initialIsActive);
 
-  // Reset form when dialog closes
+  // Sync state when dialog opens (so edit pre-fills with the right values)
   React.useEffect(() => {
-    if (!open) {
-      setTitle("");
-      setContent("");
-      setIsActive(true);
+    if (open) {
+      setT(initialTitle);
+      setC(initialContent);
+      setIsActive(initialIsActive);
     }
-  }, [open]);
+  }, [open, initialTitle, initialContent, initialIsActive]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if (!t.trim() || !c.trim()) return;
     onSubmit({
-      title: title.trim(),
-      content: content.trim(),
-      is_active: isActive ? 1 : 0,
+      title: t.trim(),
+      content: c.trim(),
+      is_active: isActive,
     });
   };
 
@@ -307,18 +394,16 @@ function CreateAnnouncementDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>新建站点公告</DialogTitle>
-          <DialogDescription>
-            填写标题与正文，选择是否立即上线。提交后将在公告列表中显示。
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="ann-title">标题</Label>
             <Input
               id="ann-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={t}
+              onChange={(e) => setT(e.target.value)}
               placeholder="例如：站点升级维护通知"
               maxLength={120}
               required
@@ -328,10 +413,10 @@ function CreateAnnouncementDialog({
             <Label htmlFor="ann-content">正文</Label>
             <Textarea
               id="ann-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+              value={c}
+              onChange={(e) => setC(e.target.value)}
               placeholder="公告内容..."
-              rows={5}
+              rows={6}
               required
             />
           </div>
@@ -356,9 +441,9 @@ function CreateAnnouncementDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={loading || !title.trim() || !content.trim()}
+              disabled={loading || !t.trim() || !c.trim()}
             >
-              {loading ? "提交中..." : "发布"}
+              {loading ? "提交中..." : confirmLabel}
             </Button>
           </DialogFooter>
         </form>
