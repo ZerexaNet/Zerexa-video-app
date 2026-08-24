@@ -368,6 +368,6 @@ Zerexa Video 的远端 API（`https://video.zerexa.net`）没有启用 CORS，�
 
 ---
 
-## 许可
+## 开源协议
 
-本项目为 Zerexa Video 的非官方前端实现，所有视频内容版权归原作者所有。API 文档与远端服务版权归 Zerexa Video 团队。
+[Apache2.0](LICENSE)
