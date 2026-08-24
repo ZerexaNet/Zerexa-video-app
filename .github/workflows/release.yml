@@ -358,78 +358,52 @@ jobs:
           TAG_NAME="${{ needs.meta.outputs.tag_name }}"
           COMMIT_FULL="${{ github.sha }}"
           COMMIT_SHORT="${{ needs.meta.outputs.commit_short }}"
+          IS_RELEASE="${{ needs.meta.outputs.is_release }}"
 
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || \
                      git tag -l --sort=-version:refname | grep -v "^${TAG_NAME}$" | head -n1 || true)
 
-          {
-            if [ "${{ needs.meta.outputs.is_release }}" = "true" ]; then
-              echo "# Zerexa Video App ${VERSION}"
-              echo ""
-              echo "正式发布版本。构建自 commit \`${COMMIT_SHORT}\`。"
-            else
-              echo "# Zerexa Video App Pre-release"
-              echo ""
-              echo "**版本号:** \`${VERSION}\`  "
-              echo "**Commit:** [\`${COMMIT_SHORT}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_FULL})  "
-              echo "**Tag:** \`${TAG_NAME}\`  "
-              echo ""
-              echo "> 这是基于 \`main\` 分支最新 commit 的自动化预发布构建, 不保证稳定."
-            fi
+          if [ -n "$LAST_TAG" ]; then
+            COMMIT_LIST_TITLE="本次更新 (自 \`${LAST_TAG}\`)"
+            COMMIT_LIST=$(git log --pretty=format:'- %s (%h)' "${LAST_TAG}..HEAD" 2>/dev/null | head -100 || true)
+          else
+            COMMIT_LIST_TITLE="本次提交"
+            COMMIT_LIST=$(git log --pretty=format:'- %s (%h)' -n 100)
+          fi
 
-            echo ""
-            echo "## 下载"
-            echo ""
-            echo "| 平台 | 文件 | 说明 |"
-            echo "|------|------|------|"
-            echo "| Windows x64 | \`zerexa-video-server-win-x64.exe\` | 双击运行, 默认监听 :3000 |"
-            echo "| Linux x86_64 | \`zerexa-video-server-linux-x64\` | \`chmod +x\` 后执行, 默认监听 :3000 |"
-            echo "| Android | \`zerexa-video-app-android-universal-*.apk\` | universal APK, 同时支持 arm64/arm/x86_64 |"
-            echo "| iOS | \`zerexa-video-app-ios-unsigned-*.ipa\` | 未签名, 用 TrollStore / AltStore 安装 |"
-            echo ""
-            echo "## 校验"
-            echo ""
-            echo '```'
-            echo "sha256sum -c SHA256SUMS.txt"
-            echo '```'
-            echo ""
-            echo "## 服务端运行"
-            echo ""
-            echo '```bash'
-            echo '# Linux'
-            echo 'chmod +x zerexa-video-server-linux-x64'
-            echo './zerexa-video-server-linux-x64           # 监听 :3000'
-            echo 'PORT=8080 ./zerexa-video-server-linux-x64 # 监听 :8080'
-            echo ""
-            echo '# Windows (cmd / PowerShell)'
-            echo 'zerexa-video-server-win-x64.exe'
-            echo '$env:PORT=8080; .\zerexa-video-server-win-x64.exe'
-            echo '```'
-            echo ""
-            echo "首次运行会自动解压到 \`~/.zerexa-video-server/<hash>/\\", 后续启动直接复用."
-            echo ""
-            echo "## 移动端安装"
-            echo ""
-            echo "- **Android:** 直接安装 APK (需在系统设置中允许 \"未知来源\" 安装)"
-            echo "- **iOS:** IPA 未签名, 需用 [TrollStore](https://github.com/opa334/TrollStore) / [AltStore](https://altstore.io) / [Sideloadly](https://sideloadly.io) sideload"
-            echo ""
+          if [ "$IS_RELEASE" = "true" ]; then
+            HEADER_LINE="正式发布版本。构建自 commit \`${COMMIT_SHORT}\`。"
+            PRE_NOTE="稳定版本，可作为生产部署。"
+          else
+            HEADER_LINE="**版本号:** \`${VERSION}\`  "
+            HEADER_LINE="${HEADER_LINE}  **Commit:** [\`${COMMIT_SHORT}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_FULL})  "
+            HEADER_LINE="${HEADER_LINE}  **Tag:** \`${TAG_NAME}\`"
+            PRE_NOTE="这是基于 \`main\` 分支最新 commit 的自动化预发布构建，不保证稳定。需要稳定版本请使用 [\`v* tag\`](../../releases/latest) 的 release。"
+          fi
 
-            # Commit list
-            if [ -n "$LAST_TAG" ]; then
-              echo "## 本次更新 (自 \`$LAST_TAG\`)"
-              echo ""
-              git log --pretty=format:'- %s (%h)' "${LAST_TAG}..HEAD" 2>/dev/null | head -100 || true
-            else
-              echo "## 本次提交"
-              echo ""
-              git log --pretty=format:'- %s (%h)' -n 100
-            fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-            echo ""
-            echo ""
-            echo "---"
-            echo "Actions Run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
-          } > release-notes.md
+          # Write each substitution value to a file (avoids all bash quoting issues),
+          # then let python do the placeholder swap.
+          mkdir -p /tmp/rn
+          printf '%s' "$VERSION"              > /tmp/rn/version
+          printf '%s' "$HEADER_LINE"          > /tmp/rn/header_line
+          printf '%s' "$PRE_NOTE"             > /tmp/rn/pre_note
+          printf '%s' "$COMMIT_LIST_TITLE"    > /tmp/rn/commit_list_title
+          printf '%s' "$COMMIT_LIST"          > /tmp/rn/commit_list
+          printf '%s' "$GITHUB_RUN_NUMBER"    > /tmp/rn/run_number
+          printf '%s' "$RUN_URL"              > /tmp/rn/run_url
+
+          python3 scripts/render-release-notes.py \
+            scripts/release-notes-template.md \
+            release-notes.md \
+            /tmp/rn/version \
+            /tmp/rn/header_line \
+            /tmp/rn/pre_note \
+            /tmp/rn/commit_list_title \
+            /tmp/rn/commit_list \
+            /tmp/rn/run_number \
+            /tmp/rn/run_url
 
           echo "=== Release Notes Preview ==="
           head -50 release-notes.md
