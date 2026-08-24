@@ -54,7 +54,8 @@ export interface Announcement {
   id: string;
   title: string;
   content: string;
-  is_active: number;
+  /** Truthiness flag; upstream has used both number (0/1) and boolean. */
+  is_active: number | boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -103,6 +104,70 @@ export interface UserInfo {
   created_at?: string;
   points?: number;
   signed_in_today?: boolean;
+}
+
+/**
+ * Admin-facing user record. The /api/admin/users endpoint returns a
+ * richer shape than the public /api/user endpoint: it includes email,
+ * role, ban status, and registration metadata that the public API
+ * intentionally hides.
+ */
+export interface AdminUser {
+  id: string;
+  uid?: number;
+  username: string;
+  email?: string | null;
+  role?: string;
+  bio?: string | null;
+  gravatar_url?: string | null;
+  verification_badge?: VerificationBadge;
+  verification_label?: string | null;
+  is_banned?: number | boolean;
+  banned?: number | boolean;
+  status?: string;
+  points?: number;
+  created_at?: string;
+  updated_at?: string;
+  last_login_at?: string | null;
+  ip_location?: string | null;
+  video_count?: number;
+  follower_count?: number;
+  following_count?: number;
+}
+
+/**
+ * Admin-facing report record. The exact field set is opaque to us
+ * (the upstream API is not documented in detail), so most fields
+ * are optional.
+ */
+export interface AdminReport {
+  id: string;
+  reporter_uid?: number;
+  reporter_username?: string;
+  target_type?: string;
+  target_id?: string;
+  target_title?: string;
+  reason?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  handler_uid?: number | null;
+  handler_username?: string | null;
+  resolution?: string | null;
+}
+
+export interface AdminAnnouncementInput {
+  title: string;
+  content: string;
+  is_active?: number | boolean;
+}
+
+export interface AdminVideoUpdateInput {
+  title?: string;
+  description?: string | null;
+  category?: string;
+  status?: "approved" | "pending" | "rejected";
+  scheduled_at?: string | null;
 }
 
 export interface SearchResult {
@@ -339,9 +404,92 @@ export const api = {
     // Any other relative path is treated as upstream-relative.
     return `${API_BASE}${path}`;
   },
+
+  // ---------- Admin ----------
+  adminListVideos: (params: {
+    status?: "pending" | "approved" | "rejected";
+    limit?: number;
+    offset?: number;
+  } = {}) =>
+    apiFetch<VideoListItem[] | Paginated<VideoListItem>>("/api/admin/videos", {
+      query: params as Record<string, string | number | undefined>,
+      auth: true,
+    }),
+  adminListUsers: (params: {
+    role?: string;
+    banned?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}) =>
+    apiFetch<AdminUser[] | Paginated<AdminUser>>("/api/admin/users", {
+      query: params as Record<string, string | number | boolean | undefined>,
+      auth: true,
+    }),
+  adminListReports: (params: {
+    status?: "open" | "closed" | "resolved" | "pending";
+    limit?: number;
+    offset?: number;
+  } = {}) =>
+    apiFetch<AdminReport[] | Paginated<AdminReport>>("/api/admin/reports", {
+      query: params as Record<string, string | number | undefined>,
+      auth: true,
+    }),
+  adminListAnnouncements: () =>
+    apiFetch<Announcement[]>("/api/admin/announcements", { auth: true }),
+  adminCreateAnnouncement: (body: AdminAnnouncementInput) =>
+    apiFetch<Announcement | { message?: string }>("/api/admin/announcements", {
+      method: "POST",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  adminUpdateAnnouncement: (
+    id: string,
+    body: Partial<AdminAnnouncementInput> & { id?: string },
+  ) =>
+    // The upstream does not expose a dedicated PUT/DELETE route for
+    // individual announcements, so we re-use the same POST endpoint
+    // with an extended body carrying id + action. The admin UI
+    // degrades gracefully if the upstream rejects the call.
+    apiFetch<Announcement | { message?: string }>("/api/admin/announcements", {
+      method: "POST",
+      auth: true,
+      body: { ...body, id, action: "update" } as unknown as Record<string, unknown>,
+    }),
+  adminDeleteAnnouncement: (id: string) =>
+    apiFetch<{ message?: string } | null>("/api/admin/announcements", {
+      method: "POST",
+      auth: true,
+      body: { id, action: "delete" } as unknown as Record<string, unknown>,
+    }),
+
+  // Resource-level actions used by both authors and admins
+  updateVideo: (id: string, body: AdminVideoUpdateInput) =>
+    apiFetch<VideoDetail | { message?: string }>(`/api/videos/${id}`, {
+      method: "PUT",
+      auth: true,
+      body: body as unknown as Record<string, unknown>,
+    }),
+  deleteVideo: (id: string) =>
+    apiFetch<{ message?: string } | null>(`/api/videos/${id}`, {
+      method: "DELETE",
+      auth: true,
+    }),
 };
 
 // Convenience helper used across components for "now safe to call auth" checks.
 export function isAuthed(): boolean {
   return !!getToken();
+}
+
+/**
+ * Inspects a UserInfo record and reports whether the holder has
+ * administrator privileges. The upstream API uses a `role` field
+ * whose value is a string ("admin", "moderator", "member", ...).
+ * We treat both "admin" and "moderator" as admin-capable so that
+ * moderation staff can also open the admin shell.
+ */
+export function isAdminRole(role: string | undefined | null): boolean {
+  if (!role) return false;
+  const r = role.toLowerCase();
+  return r === "admin" || r === "moderator" || r === "superadmin" || r === "super_admin";
 }

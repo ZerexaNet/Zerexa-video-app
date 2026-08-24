@@ -3,7 +3,7 @@
 /**
  * Home page hero banner.
  *
- * A bold purple gradient panel with the site tagline, three primary
+ * A bold blue gradient panel with the site tagline, three primary
  * call-to-action buttons (推荐 / 最新 / 热门), and a small grid of
  * quick stats. Visual treatment adjusts per active theme.
  */

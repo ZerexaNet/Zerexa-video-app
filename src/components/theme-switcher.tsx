@@ -4,7 +4,7 @@
  * Theme switcher button + dropdown.
  *
  * Exposes the four supported themes (Material You / Win8 Metro /
- * Zerexa Purple / Midnight) and persists the choice via the theme
+ * Zerexa Clean / Midnight) and persists the choice via the theme
  * store. The button shows a small palette glyph and the dropdown
  * shows each theme with a hint description.
  */
@@ -22,8 +22,8 @@ import { THEMES, useThemeStore, type ThemeName } from "@/lib/theme";
 const swatch: Record<ThemeName, string> = {
   material: "linear-gradient(135deg, #4285F4, #34A853)",
   metro: "linear-gradient(135deg, #2D7DD2, #97CC04)",
-  zerexa: "linear-gradient(135deg, #9373EE, #7A60C4)",
-  dark: "linear-gradient(135deg, #1a1922, #8276C9)",
+  zerexa: "linear-gradient(135deg, #FFFFFF, #1E40AF)",
+  dark: "linear-gradient(135deg, #0F172A, #3B82F6)",
 };
 
 export function ThemeSwitcher() {

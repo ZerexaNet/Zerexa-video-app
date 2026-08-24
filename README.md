@@ -3,9 +3,9 @@
 > 一个面向创作者与观众的视频、专栏与动态社区 Web 应用，基于 Zerexa Video 公开 API 构建。
 
 [![Stack](https://img.shields.io/badge/stack-Next.js%2016%20%2B%20TypeScript%20%2B%20Tailwind%204-blue)]()
-[![API](https://img.shields.io/badge/API-zerexa--video.apifox.cn-purple)]()
+[![API](https://img.shields.io/badge/API-zerexa--video.apifox.cn-blue)]()
 
-本项目是一个完整的视频网站前端应用，对接 [Zerexa Video](https://video.zerexa.net) 公开 API（[文档](https://zerexa-video.apifox.cn/)），融合 [video.zerexa.net](https://video.zerexa.net) 的产品形态、Google Material You 的视觉语言以及 Windows 8 Metro 的扁平美学，提供四种可一键切换的整体主题。
+本项目是一个完整的视频网站前端应用，对接 [Zerexa Video](https://video.zerexa.net) 公开 API（[文档](https://zerexa-video.apifox.cn/)），融合 [video.zerexa.net](https://video.zerexa.net) 的产品形态、Google Material You 的视觉语言、Windows 8 Metro 的扁平美学，以及参考 [io.hk.cn](https://www.io.hk.cn/) 的清爽留白排版，提供四种可一键切换的整体主题与一个完整的后台管理面板。
 
 ---
 
@@ -13,6 +13,7 @@
 
 - [功能特性](#功能特性)
 - [多主题系统](#多主题系统)
+- [管理后台](#管理后台)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [开始使用](#开始使用)
@@ -81,8 +82,8 @@
 | --------------- | ---------------- | ------------------------------------------------------------------- | ------------------------------ |
 | `material`      | Material You     | 大圆角（`--radius: 1.25rem`）、柔和阴影、温暖中性灰、Google 蓝主色  | Google Material 3              |
 | `metro`         | Win8 Metro       | 0px 圆角、扁平色块、无阴影、纯色高饱和度强调色                     | Windows 8 / Windows Phone 8    |
-| `zerexa`        | Zerexa Purple    | 中等圆角、紫色（`#9373EE`）主色、米色暖底、轻微悬浮                  | video.zerexa.net 站点默认配色   |
-| `dark`          | Midnight         | 深色高对比、紫色高亮、夜间场景                                      | Dark theme fallback            |
+| `zerexa`        | Zerexa Clean     | 纯白底色、海军蓝主色（`#1E40AF`）、发丝级边框、大量留白、零紫色调  | io.hk.cn                       |
+| `dark`          | Midnight         | 深色高对比、蓝色高亮、夜间场景                                      | Dark theme fallback            |
 
 实现要点：
 
@@ -91,6 +92,64 @@
 3. `src/app/layout.tsx` 在 `<head>` 内联一段引导脚本，在首屏渲染前就读取 localStorage 并设置 `<html data-theme>`，避免 FOUC（主题闪烁）。
 4. Tailwind 4 的 `@theme inline` 语法让所有 `bg-background` / `text-foreground` 等原子类自动响应主题切换。
 5. Metro 主题额外通过全局 `border-radius: 0 !important` 规则强制所有 shadcn 组件进入"硬边"状态。
+6. Zerexa Clean 主题以 io.hk.cn 为参考，移除全部紫色调（包括 Logo 渐变、品牌色、弹幕颜色预设、分类占位封面），统一改用海蓝主色与中性灰阶。
+
+---
+
+## 管理后台
+
+应用包含一个完整的后台管理面板，仅对 `admin` / `moderator` 角色可见。入口位于前台顶栏右上角的"账户"下拉菜单底部，导航到 `?view=admin&section=dashboard`。
+
+### 进入方式
+
+- **角色判定**：`src/lib/api.ts` 中的 `isAdminRole()` 判定当前用户的 `role` 字段是否为 `admin` / `moderator` / `superadmin`。判定结果会传给 `AppHeader`，决定是否在用户下拉菜单显示"管理后台"条目。
+- **路由解析**：`?view=admin` 触发 `app-shell.tsx` 直接渲染 `AdminShell` 而非前台 Header / Footer，让后台获得完整的左侧栏 + 顶栏布局。
+- **未登录访问**：直接访问 `?view=admin` 时会渲染后台壳，并在概览页显示"未检测到登录状态"红色提示。后续调用的管理 API 会返回 401，列表显示为空且不报错。
+
+### 后台模块
+
+后台分为五个子页面，对应 `?view=admin&section=...`：
+
+| Section          | 功能                                                                                          | 上游 API                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `dashboard`      | 概览：分类统计卡片（待审 / 已通过 / 已拒绝视频数、用户总数、待处理 / 已关闭举报、公告总数）+ 快捷入口 | 汇总调用以下四个接口                                                                             |
+| `videos`         | 视频审核：按状态过滤、通过 / 拒绝 / 删除、跳转前台播放                                          | `GET /api/admin/videos?status=...`、`PUT /api/videos/{id}`、`DELETE /api/videos/{id}`             |
+| `users`          | 用户管理：按角色 / 封禁过滤、客户端搜索用户名 / 邮箱 / UID                                    | `GET /api/admin/users?role=...&banned=...`                                                         |
+| `reports`        | 举报处理：按状态过滤、跳转被举报的视频                                                        | `GET /api/admin/reports?status=...`                                                               |
+| `announcements`  | 公告管理：列表、新建（弹出对话框）、上下线切换、删除                                            | `GET /api/admin/announcements`、`POST /api/admin/announcements`                                  |
+
+### 视觉与交互
+
+- 后台使用独立的布局：固定 240px 左侧栏、64px 顶栏、内容区。移动端通过左上角按钮唤出抽屉式侧栏。
+- 状态徽章使用语义化颜色：待处理=琥珀色、已通过/已上线=绿色、已拒绝/已封禁=红色、管理员=蓝色。
+- 所有破坏性操作（删除视频、删除公告）都会先弹出 `window.confirm` 二次确认。
+- 所有操作结果通过 Toast 反馈：成功显示绿色 toast，失败显示红色 toast 携带错误信息。
+- 数据列表使用 TanStack Query 缓存，操作成功后自动 `invalidateQueries` 触发列表刷新。
+- 视频与公告的"操作"列在当前过滤条件下禁用相应按钮（例如在"已通过"列表中禁用"通过"按钮）。
+
+### 降级策略
+
+部分管理动作（公告编辑、用户封禁、举报关闭）的对应远端路由在文档与运行时探测中未确认存在：
+
+- 公告编辑 / 删除：复用 `POST /api/admin/announcements` 并附加 `{action:"update"|"delete", id}` 字段。若上游不接受该约定，前端通过 toast 提示失败，列表保持不变。
+- 用户封禁 / 角色变更：以只读列表呈现，操作列显示"由远端服务直接管理"的说明，不发起失败的请求。
+- 举报关闭：同上，只读列表 + 跳转被举报视频的链接。
+
+这样即便上游 API 有缺失，后台仍可作为只读仪表盘完整运行。
+
+### 后台组件目录
+
+```
+src/components/admin/
+├── admin-shell.tsx           # 后台壳：左侧栏 + 顶栏 + 内容区
+├── admin-shared.tsx           # 共享组件：StatCard / StatusBadge / EmptyState / AdminTable / asArray
+├── admin-dashboard.tsx        # 概览页
+├── admin-videos.tsx           # 视频审核
+├── admin-users.tsx            # 用户管理
+├── admin-reports.tsx          # 举报处理
+├── admin-announcements.tsx    # 公告管理
+└── index.ts                   # barrel export
+```
 
 ---
 
@@ -123,8 +182,8 @@ src/
 │   └── page.tsx                          # 唯一可访问路由 /
 │
 ├── components/
-│   ├── app-shell.tsx                     # 顶层壳：Header + Nav + Main + Footer
-│   ├── app-header.tsx                    # 顶栏：Logo / 搜索 / 主题 / 账户
+│   ├── app-shell.tsx                     # 顶层壳：Header + Nav + Main + Footer / Admin
+│   ├── app-header.tsx                    # 顶栏：Logo / 搜索 / 主题 / 账户 / 后台入口
 │   ├── app-nav.tsx                       # 移动端侧滑抽屉
 │   ├── app-footer.tsx                    # 站脚
 │   ├── theme-switcher.tsx                # 主题切换 Popover
@@ -142,12 +201,22 @@ src/
 │   ├── danmaku-layer.tsx                 # Canvas 弹幕引擎
 │   ├── comment-section.tsx               # 评论列表 + 发布
 │   ├── query-provider.tsx                # TanStack Query Client Provider
-│   └── icons.tsx                         # 全部 SVG 图标
+│   ├── icons.tsx                         # 全部 SVG 图标（含后台专用图标）
+│   ├── admin/                            # 后台管理面板
+│   │   ├── admin-shell.tsx               # 后台壳：左侧栏 + 顶栏 + 内容区
+│   │   ├── admin-shared.tsx              # StatCard / StatusBadge / EmptyState / Table
+│   │   ├── admin-dashboard.tsx           # 概览页（统计卡片 + 快捷入口）
+│   │   ├── admin-videos.tsx              # 视频审核（通过 / 拒绝 / 删除）
+│   │   ├── admin-users.tsx               # 用户管理（只读列表 + 搜索）
+│   │   ├── admin-reports.tsx             # 举报处理（只读列表）
+│   │   ├── admin-announcements.tsx       # 公告管理（新建 / 上下线 / 删除）
+│   │   └── index.ts                      # barrel export
+│   └── ui/                              # shadcn/ui 原子组件
 │
 ├── lib/
-│   ├── api.ts                            # API 客户端 + 类型定义
+│   ├── api.ts                            # API 客户端 + 类型定义（含 admin 端点）
 │   ├── auth.ts                           # 认证状态 store
-│   ├── route.ts                          # URL 驱动的视图路由 store
+│   ├── route.ts                          # URL 驱动的视图路由 store（含 ?view=admin）
 │   ├── theme.ts                          # 主题 store + useTheme hook
 │   ├── format.ts                         # 数字 / 时间 / 分类格式化
 │   ├── db.ts                             # Prisma 客户端（备用）
@@ -192,13 +261,15 @@ bun run db:push
 
 由于 Next.js 项目只能暴露 `/` 路由，视图切换通过 URL search params 驱动：
 
-| 参数           | 值                | 渲染视图       |
-| -------------- | ----------------- | -------------- |
-| `?v=<id>`      | 视频 ID           | WatchView      |
-| `?q=<keyword>` | 关键词             | SearchView     |
-| `?view=profile`| 固定字符串         | ProfileView    |
-| `?category=<r>`| 分类根（如 Music） | CategoryView   |
-| （无参数）      | -                 | HomeView       |
+| 参数                       | 值                              | 渲染视图                            |
+| -------------------------- | ------------------------------- | ----------------------------------- |
+| `?v=<id>`                  | 视频 ID                         | WatchView                           |
+| `?q=<keyword>`             | 关键词                          | SearchView                          |
+| `?view=profile`            | 固定字符串                      | ProfileView                         |
+| `?category=<r>`            | 分类根（如 Music）              | CategoryView                        |
+| `?view=admin`              | 进入管理后台                    | AdminShell（默认概览）              |
+| `?view=admin&section=...`  | section 取 dashboard / videos / users / reports / announcements | 对应后台子页面 |
+| （无参数）                 | -                               | HomeView                            |
 
 `useRoute` store 在 mount 时调用 `hydrate()` 解析当前 URL，并订阅 `popstate` 事件以响应浏览器前进 / 后退。所有 `go*` 方法通过 `history.pushState` 更新 URL 后再触发组件重渲染。
 
@@ -265,12 +336,16 @@ Zerexa Video 的远端 API（`https://video.zerexa.net`）没有启用 CORS，�
 - [x] 视频卡片点击跳转到播放页，URL 同步到 `?v=<id>`
 - [x] 视频播放：进度条更新，CDN 流媒体返回 206
 - [x] 弹幕与评论接口均返回 200
-- [x] 主题切换：Material You / Win8 Metro / Zerexa Purple / Midnight 四主题均生效
+- [x] 主题切换：Material You / Win8 Metro / Zerexa Clean / Midnight 四主题均生效，全项目零紫色调
 - [x] 搜索：URL `?q=music` 触发搜索，结果列表正确显示
 - [x] 登录 / 注册对话框打开，Tab 切换登录 / 注册表单
 - [x] 移动端 (390x844)：抽屉导航正常，网格自适应单列
 - [x] Footer 在短页面贴底，长页面被自然推下，无重叠
 - [x] 控制台无运行时报错，ESLint 全量通过
+- [x] 后台路由 `?view=admin` 渲染独立侧栏 + 顶栏布局
+- [x] 后台五个子页面（概览 / 视频 / 用户 / 举报 / 公告）均能加载，无管理员权限时优雅降级为提示
+- [x] 视频审核页状态过滤（全部 / 待审 / 已通过 / 已拒绝）生效，通过 / 拒绝 / 删除按钮调用对应 API
+- [x] 公告管理页新建对话框提交正常，上下线切换与删除二次确认
 
 ---
 
@@ -284,7 +359,9 @@ Zerexa Video 的远端 API（`https://video.zerexa.net`）没有启用 CORS，�
 - 私信与站内信 UI
 - 工单系统
 - 公投详情与投票
-- 管理员后台（用户管理、视频审核、举报处理）
+- 后台用户封禁 / 解禁 / 角色变更（依赖上游 API 开放对应路由）
+- 后台举报关闭 / 标记已处理（同上）
+- 后台公告编辑（同上）
 - 字幕加载与切换
 - 视频合集编辑
 - 用户举报弹窗的完整表单

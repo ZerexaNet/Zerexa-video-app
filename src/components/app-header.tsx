@@ -31,6 +31,7 @@ import {
   StarIcon,
   MenuIcon,
   CloseIcon,
+  DashboardIcon,
 } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { useRoute } from "@/lib/route";
@@ -44,11 +45,16 @@ import {
 interface HeaderProps {
   onOpenNav: () => void;
   categories: { root: string; label: string }[];
+  showAdminEntry?: boolean;
 }
 
-export function AppHeader({ onOpenNav, categories }: HeaderProps) {
+export function AppHeader({
+  onOpenNav,
+  categories,
+  showAdminEntry,
+}: HeaderProps) {
   const { user, logout } = useAuth();
-  const { goHome, goSearch, goProfile } = useRoute();
+  const { goHome, goSearch, goProfile, goAdmin } = useRoute();
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -188,6 +194,15 @@ export function AppHeader({ onOpenNav, categories }: HeaderProps) {
                   <StarIcon size={16} className="mr-2" />
                   我的收藏
                 </DropdownMenuItem>
+                {showAdminEntry && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => goAdmin("dashboard")}>
+                      <DashboardIcon size={16} className="mr-2" />
+                      管理后台
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={async () => {

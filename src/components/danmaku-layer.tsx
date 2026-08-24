@@ -54,7 +54,7 @@ const COLOR_PRESETS: Record<string, string> = {
   yellow: "#FFD24C",
   pink: "#FF6FB5",
   cyan: "#4DE8E8",
-  purple: "#9373EE",
+  purple: "#3B82F6",
 };
 
 function parseColor(c?: string): string {

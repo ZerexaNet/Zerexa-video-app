@@ -4,9 +4,9 @@
  * Theme system for Zerexa Video.
  *
  * Four discrete visual themes are exposed:
- *  - "material"  : Google Material You look (rounded, soft shadows, default accent)
+ *  - "material"  : Google Material You look (rounded, soft shadows, warm neutrals)
  *  - "metro"     : Windows 8 Metro / Modern UI (flat, hard edges, vibrant blocks)
- *  - "zerexa"    : Site's signature purple-on-white corporate identity
+ *  - "zerexa"    : Zerexa Clean - pure white surface, navy ink, registrar-blue accent
  *  - "dark"      : A high-contrast dark variant usable on its own
  *
  * The active theme is stored on <html data-theme="..."> and persisted to
@@ -33,8 +33,8 @@ export const THEMES: { id: ThemeName; label: string; hint: string }[] = [
   },
   {
     id: "zerexa",
-    label: "Zerexa Purple",
-    hint: "Site signature purple on light surface",
+    label: "Zerexa Clean",
+    hint: "Pure white surface, navy ink, registrar-blue accent",
   },
   {
     id: "dark",

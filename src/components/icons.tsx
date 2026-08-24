@@ -345,8 +345,8 @@ export const Logo = ({
   >
     <defs>
       <linearGradient id="zv-logo-grad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#9373EE" />
-        <stop offset="100%" stopColor="#7A60C4" />
+        <stop offset="0%" stopColor="#1E40AF" />
+        <stop offset="100%" stopColor="#0F172A" />
       </linearGradient>
     </defs>
     <rect
@@ -354,7 +354,7 @@ export const Logo = ({
       y="2"
       width="28"
       height="28"
-      rx="8"
+      rx="6"
       fill="url(#zv-logo-grad)"
     />
     <path
@@ -366,4 +366,109 @@ export const Logo = ({
       fill="#FFD24C"
     />
   </svg>
+);
+
+// ============================================================
+// Admin-only icons (used by the back-office UI)
+// ============================================================
+
+export const DashboardIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="9" />
+    <rect x="14" y="3" width="7" height="5" />
+    <rect x="14" y="12" width="7" height="9" />
+    <rect x="3" y="16" width="7" height="5" />
+  </Base>
+);
+
+export const UsersIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9.5" cy="7" r="3.5" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </Base>
+);
+
+export const PlusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Base>
+);
+
+export const TrashIcon = (p: IconProps) => (
+  <Base {...p}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </Base>
+);
+
+export const PencilIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+  </Base>
+);
+
+export const FilterIcon = (p: IconProps) => (
+  <Base {...p}>
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+  </Base>
+);
+
+export const CheckCircleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+    <polyline points="22 4 12 14.01 9 11.01" />
+  </Base>
+);
+
+export const XCircleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+    <line x1="9" y1="9" x2="15" y2="15" />
+  </Base>
+);
+
+export const ExternalLinkIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" y1="14" x2="21" y2="3" />
+  </Base>
+);
+
+export const ChartIcon = (p: IconProps) => (
+  <Base {...p}>
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+    <line x1="3" y1="20" x2="21" y2="20" />
+  </Base>
+);
+
+export const AlertIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </Base>
+);
+
+export const InboxIcon = (p: IconProps) => (
+  <Base {...p}>
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+  </Base>
+);
+
+export const ClockIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </Base>
 );

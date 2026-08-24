@@ -61,24 +61,24 @@ export function splitCategory(c: string): { root: string; sub: string | null } {
 export function categoryGradient(category: string): string {
   const { root } = splitCategory(category);
   const map: Record<string, string> = {
-    Music: "from-purple-500 via-fuchsia-500 to-pink-500",
+    Music: "from-blue-500 via-sky-500 to-cyan-500",
     Gaming: "from-emerald-500 via-teal-500 to-cyan-500",
-    Tech: "from-blue-500 via-indigo-500 to-violet-500",
+    Tech: "from-blue-500 via-indigo-500 to-cyan-500",
     Life: "from-amber-500 via-orange-500 to-rose-500",
-    Entertainment: "from-rose-500 via-pink-500 to-purple-500",
+    Entertainment: "from-rose-500 via-red-500 to-orange-500",
     Sports: "from-lime-500 via-green-500 to-emerald-500",
     Food: "from-orange-500 via-amber-500 to-yellow-500",
     Travel: "from-cyan-500 via-sky-500 to-blue-500",
     Fashion: "from-pink-500 via-rose-500 to-red-500",
-    Education: "from-violet-500 via-purple-500 to-indigo-500",
+    Education: "from-blue-500 via-sky-500 to-teal-500",
     News: "from-slate-500 via-gray-500 to-zinc-500",
     Film: "from-indigo-500 via-blue-500 to-cyan-500",
     Auto: "from-zinc-500 via-slate-500 to-gray-500",
-    Art: "from-fuchsia-500 via-purple-500 to-violet-500",
+    Art: "from-fuchsia-500 via-pink-500 to-rose-500",
     General: "from-teal-500 via-cyan-500 to-blue-500",
     Charity: "from-emerald-500 via-green-500 to-lime-500",
   };
-  return map[root] ?? "from-violet-500 via-purple-500 to-fuchsia-500";
+  return map[root] ?? "from-blue-500 via-sky-500 to-cyan-500";
 }
 
 /** Sanitise user-controlled strings before injecting into the DOM. */

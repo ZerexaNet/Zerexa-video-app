@@ -234,7 +234,7 @@ export function VideoPlayer({ src, poster, danmaku, onSendDanmaku }: PlayerProps
     "#34D27B",
     "#4D9DFF",
     "#FF6FB5",
-    "#9373EE",
+    "#3B82F6",
   ];
 
   return (

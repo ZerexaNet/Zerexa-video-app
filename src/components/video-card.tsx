@@ -7,7 +7,7 @@
  * visual treatment to the active theme:
  *   - Material You: rounded 16:9 with soft elevation
  *   - Metro: flat solid tiles with hard edges
- *   - Zerexa Purple: subtle purple ring on hover
+ *   - Zerexa Clean: subtle blue ring on hover
  *   - Midnight: dark surface with bright accent
  *
  * The cover is either the remote cover image (when available) or a
