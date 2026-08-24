@@ -140,9 +140,6 @@ jobs:
         run: |
           chmod +x scripts/build-binaries.sh
           ./scripts/build-binaries.sh "${{ needs.meta.outputs.version }}" artifacts/binaries
-        env:
-          GOOS: linux
-          GOARCH: amd64
 
       - name: Generate SHA256
         run: |

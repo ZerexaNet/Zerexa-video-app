@@ -100,13 +100,15 @@ if [ ! -f "/tmp/node-cache/${NODE_WIN_ZIP}" ]; then
 fi
 
 echo "[4/6] Cross-compiling Go launcher for linux-x64 + win-x64..."
-cd "$(dirname "${LAUNCHER_SRC}")"
+LAUNCHER_DIR="$(dirname "${LAUNCHER_SRC}")"
 # Init go.mod if missing
-if [ ! -f go.mod ]; then
-  "${GOROOT:-$(go env GOROOT)}"/bin/go mod init zerexa-launcher || go mod init zerexa-launcher
+if [ ! -f "${LAUNCHER_DIR}/go.mod" ]; then
+  ( cd "${LAUNCHER_DIR}" && go mod init zerexa-launcher )
 fi
-GOOS=linux   GOARCH=amd64 go build -ldflags='-s -w' -o "${WORK_DIR}/launcher-linux"   .
-GOOS=windows GOARCH=amd64 go build -ldflags='-s -w' -o "${WORK_DIR}/launcher-win.exe" .
+# Build from project root (so we don't lose cwd). Use GOENV=off + GOFLAGS=-mod=mod
+# to avoid fetching anything; this is a self-contained single-file program.
+GOFLAGS="-mod=mod" GOOS=linux   GOARCH=amd64 go build -C "${LAUNCHER_DIR}" -ldflags='-s -w' -o "${WORK_DIR}/launcher-linux"   .
+GOFLAGS="-mod=mod" GOOS=windows GOARCH=amd64 go build -C "${LAUNCHER_DIR}" -ldflags='-s -w' -o "${WORK_DIR}/launcher-win.exe" .
 
 echo "[5/6] Building Linux x64 single-file binary..."
 # Add linux node binary to payload
