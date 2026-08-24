@@ -1,0 +1,316 @@
+# Zerexa Video App — Auto Build & Release
+# ---------------------------------------------------------------------------
+# 触发规则:
+#   - push 到 main 分支       → 自动打包, 发 pre-release
+#                               版本号 = commit SHA 前 6 位
+#                               tag 名 = pre-<sha6>
+#   - push 形如 v* 的 tag     → 自动打包, 发普通 release (latest)
+#                               版本号 / tag 名 = tag 本身 (例如 v1.2.0)
+#   - workflow_dispatch        → 手动触发, 默认走 pre-release 分支
+#
+# 产物:
+#   - zerexa-video-app-<version>.tar.gz   (Next.js standalone + 静态资源 + prisma)
+#   - zerexa-video-app-<version>.zip
+#   - SHA256SUMS.txt                       (前两个文件的 sha256)
+#
+# 部署:
+#   解压 tar.gz 后, 进入 standalone 目录运行:
+#     NODE_ENV=production node server.js
+#   需要 Prisma 的环境请额外执行:
+#     bunx prisma generate && bunx prisma db push
+# ---------------------------------------------------------------------------
+
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type (release or prerelease)'
+        required: false
+        default: 'prerelease'
+        type: choice
+        options:
+          - prerelease
+          - release
+
+permissions:
+  contents: write   # 创建 release / tag 必需
+  packages: write   # 备用, 上传到 GHCR 时需要
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ---------------------------------------------------------------------
+      # 1. 计算版本号 / tag / release 类型
+      # ---------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 拿到完整历史, 便于生成 release notes
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          # 默认值
+          IS_RELEASE="false"
+          IS_PRERELEASE="true"
+          VERSION=""
+          TAG_NAME=""
+          RELEASE_NAME=""
+
+          # 1) workflow_dispatch: 看用户输入
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT_TYPE="${{ github.event.inputs.release_type }}"
+            COMMIT_SHORT="${GITHUB_SHA:0:6}"
+            if [ "$INPUT_TYPE" = "release" ]; then
+              IS_RELEASE="true"
+              IS_PRERELEASE="false"
+              VERSION="manual-${COMMIT_SHORT}"
+              TAG_NAME="manual-${COMMIT_SHORT}"
+              RELEASE_NAME="Zerexa Video App (manual) ${VERSION}"
+            else
+              VERSION="0.0.0-pre.${COMMIT_SHORT}"
+              TAG_NAME="pre-${COMMIT_SHORT}"
+              RELEASE_NAME="Zerexa Video App Pre-release ${COMMIT_SHORT}"
+            fi
+          # 2) tag 推送 (refs/tags/v*): 普通发布
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            IS_RELEASE="true"
+            IS_PRERELEASE="false"
+            VERSION="${GITHUB_REF#refs/tags/}"
+            TAG_NAME="${VERSION}"
+            RELEASE_NAME="Zerexa Video App ${VERSION}"
+          # 3) 普通分支推送 (main): pre-release
+          else
+            COMMIT_SHORT="${GITHUB_SHA:0:6}"
+            VERSION="0.0.0-pre.${COMMIT_SHORT}"
+            TAG_NAME="pre-${COMMIT_SHORT}"
+            RELEASE_NAME="Zerexa Video App Pre-release ${COMMIT_SHORT}"
+          fi
+
+          echo "is_release=${IS_RELEASE}"        >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}"  >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"             >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}"           >> "$GITHUB_OUTPUT"
+          echo "release_name=${RELEASE_NAME}"   >> "$GITHUB_OUTPUT"
+          echo "commit_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "commit_full=${GITHUB_SHA}"      >> "$GITHUB_OUTPUT"
+
+          # 调试输出
+          {
+            echo "=== Release Metadata ==="
+            echo "Event:        ${{ github.event_name }}"
+            echo "Ref:          ${GITHUB_REF}"
+            echo "Version:      ${VERSION}"
+            echo "Tag name:     ${TAG_NAME}"
+            echo "Release name: ${RELEASE_NAME}"
+            echo "Pre-release:  ${IS_PRERELEASE}"
+            echo "Commit:       ${GITHUB_SHA:0:7}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------------
+      # 2. 安装 Bun + 依赖
+      # ---------------------------------------------------------------------
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # ---------------------------------------------------------------------
+      # 3. 构建 Next.js standalone
+      # ---------------------------------------------------------------------
+      - name: Build
+        run: bun run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "https://api.zerexa.net"
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      # ---------------------------------------------------------------------
+      # 4. 打包 standalone 产物
+      # ---------------------------------------------------------------------
+      - name: Package standalone build
+        id: package
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          PKG_DIR="zerexa-video-app-${VERSION}"
+          mkdir -p "${PKG_DIR}"
+
+          # 主体: Next.js standalone server
+          cp -r .next/standalone "${PKG_DIR}/standalone"
+
+          # 静态资源已经在 build 脚本里 cp 进 standalone, 这里再补一份 prisma schema
+          mkdir -p "${PKG_DIR}/prisma"
+          cp -r prisma/* "${PKG_DIR}/prisma/" 2>/dev/null || true
+
+          # 文档
+          cp README.md "${PKG_DIR}/" 2>/dev/null || true
+          cp LICENSE   "${PKG_DIR}/" 2>/dev/null || true
+
+          # 部署 / 启动说明
+          cat > "${PKG_DIR}/STARTUP.txt" <<'EOF'
+          Zerexa Video App — Standalone 部署说明
+          ========================================
+          1. 解压本压缩包
+             tar -xzf zerexa-video-app-<version>.tar.gz
+
+          2. 进入 standalone 目录
+             cd zerexa-video-app-<version>/standalone
+
+          3. 配置环境变量 (.env)
+             DATABASE_URL=...
+             NEXT_PUBLIC_API_BASE_URL=https://api.zerexa.net
+             AUTH_SECRET=...
+             PORT=3000  (可选, 默认 3000)
+
+          4. 初始化数据库 (如需)
+             bunx prisma generate
+             bunx prisma db push --accept-data-loss
+
+          5. 启动
+             NODE_ENV=production node server.js
+
+          6. 反向代理
+             推荐使用 Caddy / Nginx 把 :3000 反代到 80/443
+          EOF
+
+          # 打包
+          tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
+          zip -r  "${PKG_DIR}.zip"     "${PKG_DIR}" >/dev/null
+
+          # sha256
+          sha256sum "${PKG_DIR}.tar.gz" "${PKG_DIR}.zip" > SHA256SUMS.txt
+
+          # 调试
+          ls -lh "${PKG_DIR}.tar.gz" "${PKG_DIR}.zip" SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+          echo "asset_name=${PKG_DIR}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------------
+      # 5. 生成 Release Notes
+      # ---------------------------------------------------------------------
+      - name: Generate release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          NOTES_FILE="release-notes.md"
+          COMMIT_FULL="${{ steps.meta.outputs.commit_full }}"
+          COMMIT_SHORT="${{ steps.meta.outputs.commit_short }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG_NAME="${{ steps.meta.outputs.tag_name }}"
+
+          # 取上一个 tag (排除当前要创建的)
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || \
+                     git tag -l --sort=-version:refname | grep -v "^${TAG_NAME}$" | head -n1 || true)
+
+          {
+            if [ "${{ steps.meta.outputs.is_release }}" = "true" ]; then
+              echo "# Zerexa Video App ${VERSION}"
+              echo ""
+              echo "正式发布版本。构建自 commit \`${COMMIT_SHORT}\`。"
+              echo ""
+              echo "## 部署"
+              echo "1. 下载下方 \`.tar.gz\` 文件"
+              echo "2. 解压: \`tar -xzf zerexa-video-app-${VERSION}.tar.gz\`"
+              echo "3. 进入目录, 参考 \`STARTUP.txt\` 配置 \`.env\` 并启动"
+              echo ""
+              echo "## 校验"
+              echo "请下载 \`SHA256SUMS.txt\` 验证包完整性:"
+              echo "\`\`\`"
+              echo "sha256sum -c SHA256SUMS.txt"
+              echo "\`\`\`"
+              echo ""
+              echo "## 本次更新"
+            else
+              echo "# Zerexa Video App Pre-release"
+              echo ""
+              echo "**版本号:** \`${VERSION}\`  "
+              echo "**Commit:** [\`${COMMIT_SHORT}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_FULL})  "
+              echo "**Tag:** \`${TAG_NAME}\`  "
+              echo ""
+              echo "> 这是基于 \`main\` 分支最新 commit 的自动化预发布构建, 不保证稳定."
+              echo "> 需要稳定版本请使用 [\`v*\` tag](../../releases/latest) 的 release."
+              echo ""
+              echo "## 部署"
+              echo "1. 下载下方 \`.tar.gz\` 文件"
+              echo "2. 解压: \`tar -xzf zerexa-video-app-${VERSION}.tar.gz\`"
+              echo "3. 进入目录, 参考 \`STARTUP.txt\` 配置 \`.env\` 并启动"
+              echo ""
+              echo "## 校验"
+              echo "\`\`\`"
+              echo "sha256sum -c SHA256SUMS.txt"
+              echo "\`\`\`"
+              echo ""
+              echo "## 本次提交"
+            fi
+
+            # 提交列表
+            if [ -n "$LAST_TAG" ]; then
+              echo ""
+              echo "自 \`${LAST_TAG}\` 以来的提交:"
+              echo ""
+              git log --pretty=format:"- %s (%h)" "${LAST_TAG}..HEAD" 2>/dev/null | head -100 || true
+            else
+              echo ""
+              echo "本次 commit 列表:"
+              echo ""
+              git log --pretty=format:"- %s (%h)" -n 100
+            fi
+
+            echo ""
+            echo ""
+            echo "---"
+            echo "构建详情: [Actions Run #${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          } > "${NOTES_FILE}"
+
+          echo "=== Release Notes Preview ==="
+          cat "${NOTES_FILE}" | head -60
+          echo "..."
+
+      # ---------------------------------------------------------------------
+      # 6. 发布 GitHub Release
+      # ---------------------------------------------------------------------
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          body_path: release-notes.md
+          prerelease: ${{ steps.meta.outputs.is_prerelease }}
+          files: |
+            ${{ steps.package.outputs.asset_name }}.tar.gz
+            ${{ steps.package.outputs.asset_name }}.zip
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          # 让普通 release 自动成为 latest; pre-release 不抢占 latest
+          make_latest: ${{ steps.meta.outputs.is_release == 'true' && 'true' || 'false' }}

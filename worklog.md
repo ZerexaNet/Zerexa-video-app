@@ -127,3 +127,66 @@ Stage Summary:
 - 全部使用 SVG 图标，无 emoji，符合用户要求。
 - TypeScript / ESLint / Next.js build 全部通过。
 - 准备推送至 GitHub (https://github.com/ZerexaNet/Zerexa-video-app)。
+
+---
+Task ID: 5
+Agent: Super Z (main)
+Task: 用 GitHub Actions 自动打包并自动发 release
+  - 推送 main 分支 (不带 v* tag) → 发 pre-release
+    版本号 = commit SHA 前 6 位
+  - 推送 v* 形式 tag → 发普通 release (latest)
+    版本号 = tag 名本身
+
+Work Log:
+- 调研当前项目结构:
+  - package.json: name=nextjs_tailwind_shadcn_ts, version=0.2.1
+  - next.config.ts: output=standalone, ignoreBuildErrors=true
+  - build 脚本: next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
+  - 当前 git 状态: main 分支, origin=ZerexaNet/Zerexa-video-app.git, 已无未推送 commit
+  - 之前的 tag 列表为空 (从零开始)
+- 设计 workflow .github/workflows/release.yml:
+  - 触发器:
+    - push 到 main 分支 → pre-release 路径
+    - push 形如 v* 的 tag → 普通 release 路径
+    - workflow_dispatch: 手动触发, 输入 release_type 决定路径
+  - 权限: contents:write (创建 release/tag), packages:write (备用)
+  - 并发: 同一 ref 上后到的 run 不取消前一个 (避免半成品)
+  - 关键步骤:
+    1. actions/checkout@v4 (fetch-depth=0, 拿完整历史做 release notes)
+    2. Compute release metadata (内联 bash):
+       - workflow_dispatch: release_type=release → manual-<sha6>, 否则 pre-<sha6>
+       - tag (refs/tags/v*): 直接用 tag 名做 version/tag/release name, is_prerelease=false
+       - 分支推送: version=0.0.0-pre.<sha6>, tag=pre-<sha6>, is_prerelease=true
+    3. oven-sh/setup-bun@v2 + 缓存 (bun.lock 哈希做 key)
+    4. bun install --frozen-lockfile
+    5. bunx prisma generate
+    6. bun run build (设置 NEXT_PUBLIC_API_BASE_URL, NEXT_TELEMETRY_DISABLED=1)
+    7. Package standalone:
+       - 拷贝 .next/standalone 到 zerexa-video-app-<version>/standalone
+       - 拷贝 prisma/ schema 文件
+       - 拷贝 README.md, LICENSE, 内嵌 STARTUP.txt 部署说明
+       - tar -czf + zip + sha256sum
+    8. Generate release notes:
+       - 普通 release: 标题 + 部署 + 校验 + 上一个 tag 到 HEAD 的提交列表
+       - pre-release: 标题 + commit 链接 + 提交列表 + actions run 链接
+    9. softprops/action-gh-release@v2:
+       - tag_name / name / body_path 来自 metadata 步骤
+       - prerelease: 来自 metadata 步骤
+       - make_latest: 普通 release 才抢 latest (true), pre-release 不抢 (false)
+       - 上传 .tar.gz, .zip, SHA256SUMS.txt
+- 创建本地模拟脚本 scripts/test-meta-logic.sh:
+  - 6 个测试用例全部通过:
+    - push main:        version=0.0.0-pre.4cef33, tag=pre-4cef33, prerelease=true ✓
+    - push v1.0.0:      version=v1.0.0, tag=v1.0.0, prerelease=false ✓
+    - push v0.3.1:      version=v0.3.1, tag=v0.3.1, prerelease=false ✓
+    - workflow_dispatch prerelease: 同 push main ✓
+    - workflow_dispatch release:    manual-4cef33, prerelease=false ✓
+    - push 其他分支: 同 push main (pre-release 路径) ✓
+- 用 actionlint v1.7.4 校验 workflow 语法: 0 错误
+- 用 Python yaml.safe_load 校验 YAML 语法: OK
+
+Stage Summary:
+- .github/workflows/release.yml 已落地, 覆盖三种触发路径
+- 分支逻辑通过 6 个测试用例验证
+- actionlint 0 错误, YAML 解析 0 错误
+- 下一步: git commit + push 后, 首次 push 到 main 会立即触发首次 pre-release
