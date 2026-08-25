@@ -1,10 +1,11 @@
-# Zerexa Video App — Auto Build & Release (4 native binaries)
+# Zerexa Video App — Auto Build & Release (native Flutter, 4 platforms)
 # ---------------------------------------------------------------------------
-# Outputs:
-#   - zerexa-video-server-linux-x64          ELF x86-64  (Next.js server + Node runtime, single file)
-#   - zerexa-video-server-win-x64.exe        PE32+       (Next.js server + Node runtime, single file)
-#   - zerexa-video-app-android-universal.apk  Android     (Flutter WebView shell)
-#   - zerexa-video-app-ios-unsigned.ipa       iOS        (Flutter WebView shell, unsigned)
+# Outputs (all built from the SAME Flutter codebase, no WebView shell):
+#   - zerexa-video-android-universal-<ver>.apk  Android APK
+#   - zerexa-video-ios-unsigned-<ver>.ipa       iOS IPA (unsigned, sideload)
+#   - zerexa-video-linux-x64-<ver>.tar.gz       Linux x64 bundle (executable inside)
+#   - zerexa-video-windows-x64-<ver>.zip        Windows x64 bundle (ZerexaVideo.exe inside)
+#   - SHA256SUMS.txt
 #
 # Triggers:
 #   - push to main  (no v* tag) -> pre-release, version = 0.0.0-pre.<sha6>, tag = pre-<sha6>
@@ -33,6 +34,9 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.1'
 
 jobs:
   # -----------------------------------------------------------------------
@@ -98,73 +102,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # -----------------------------------------------------------------------
-  # Build server-side single-file binaries (Linux ELF + Windows PE)
-  # -----------------------------------------------------------------------
-  build-server:
-    needs: meta
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with: { bun-version: latest }
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: false
-
-      - name: Cache Node.js binaries
-        id: cache-node
-        uses: actions/cache@v4
-        with:
-          path: /tmp/node-cache
-          key: node-v22.11.0-linux-x64+win-x64
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: bunx prisma generate
-
-      - name: Build Next.js
-        run: bun run build
-        env:
-          NEXT_PUBLIC_API_BASE_URL: https://api.zerexa.net
-          NEXT_TELEMETRY_DISABLED: '1'
-
-      - name: Build single-file binaries
-        run: |
-          chmod +x scripts/build-binaries.sh
-          ./scripts/build-binaries.sh "${{ needs.meta.outputs.version }}" artifacts/binaries
-
-      - name: Generate SHA256
-        run: |
-          cd artifacts/binaries
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-          ls -lh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-binaries
-          path: |
-            artifacts/binaries/zerexa-video-server-linux-x64
-            artifacts/binaries/zerexa-video-server-win-x64.exe
-            artifacts/binaries/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 7
-
-  # -----------------------------------------------------------------------
-  # Build Android APK
+  # Android APK (universal, arm64+v7+x64 in one)
   # -----------------------------------------------------------------------
   build-android:
     needs: meta
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -173,56 +116,32 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - name: Flutter doctor
-        run: flutter doctor -v
-
-      - name: Bootstrap Android project
-        run: |
-          # Generate native platform scaffolding into a temp dir, then
-          # merge with our checked-in lib/main.dart + pubspec.yaml
-          flutter create --platforms=android --org net.zerexa --project-name zerexa_video /tmp/zerexa-bootstrap
-          cp -r /tmp/zerexa-bootstrap/android ./flutter_app/
-          # Make sure pubspec.yaml dependencies are honored
-          cd flutter_app
-          flutter pub get
-
-      - name: Patch AndroidManifest (INTERNET permission + cleartext)
-        run: |
-          cd flutter_app/android/app/src/main
-          python3 - <<'PY'
-          import re
-          p = 'AndroidManifest.xml'
-          s = open(p).read()
-          if 'android.permission.INTERNET' not in s:
-            s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET" />\n<application')
-          # Allow cleartext to localhost for dev builds
-          if 'usesCleartextTraffic' not in s:
-            s = s.replace('<application', '<application android:usesCleartextTraffic="true"')
-          open(p,'w').write(s)
-          PY
-          cat AndroidManifest.xml
+      - name: Pub get
+        run: flutter pub get
 
       - name: Build APK
         run: |
-          cd flutter_app
-          flutter build apk --release --no-shrink
-        env:
-          ZEREXA_WEBVIEW_URL: https://video.zerexa.net
+          flutter build apk --release \
+            --build-name="${{ needs.meta.outputs.version }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=APP_VERSION="${{ needs.meta.outputs.version }}"
 
-      - name: Rename APK with version
+      - name: Collect artifact
         run: |
           mkdir -p artifacts
-          cp flutter_app/build/app/outputs/flutter-apk/app-release.apk \
-            "artifacts/zerexa-video-app-android-universal-${{ needs.meta.outputs.version }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "artifacts/zerexa-video-android-universal-${{ needs.meta.outputs.version }}.apk"
           cd artifacts
-          sha256sum * > SHA256SUMS.txt
+          sha256sum *.apk > SHA256SUMS.txt
           ls -lh
           cat SHA256SUMS.txt
 
@@ -230,81 +149,148 @@ jobs:
         with:
           name: android-apk
           path: |
-            artifacts/zerexa-video-app-android-universal-*.apk
+            artifacts/zerexa-video-android-universal-*.apk
             artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
 
   # -----------------------------------------------------------------------
-  # Build iOS IPA (unsigned, sideload via TrollStore / AltStore)
+  # Linux x64 (executable bundle: ./zerexa-video/zerexa_video)
   # -----------------------------------------------------------------------
-  build-ios:
+  build-linux:
     needs: meta
-    runs-on: macos-latest
-    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev libblkid-dev liblzma-dev \
+            libmpv-dev mpv zenity
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build Linux
+        run: |
+          flutter build linux --release \
+            --dart-define=APP_VERSION="${{ needs.meta.outputs.version }}"
+
+      - name: Package bundle
+        run: |
+          mkdir -p artifacts/zerexa-video
+          cp -r build/linux/x64/release/bundle/* artifacts/zerexa-video/
+          chmod +x artifacts/zerexa-video/zerexa_video
+          cd artifacts
+          tar -czf "zerexa-video-linux-x64-${{ needs.meta.outputs.version }}.tar.gz" zerexa-video
+          rm -rf zerexa-video
+          sha256sum *.tar.gz > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: |
+            artifacts/zerexa-video-linux-x64-*.tar.gz
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # Windows x64 (ZerexaVideo.exe + runtime inside zip)
+  # -----------------------------------------------------------------------
+  build-windows:
+    needs: meta
+    runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - name: Setup CocoaPods
-        run: |
-          gem install cocoapods --no-document
-          pod --version
+      - name: Pub get
+        run: flutter pub get
 
-      - name: Flutter doctor
-        run: flutter doctor -v
-
-      - name: Bootstrap iOS project
+      - name: Build Windows
         run: |
-          flutter create --platforms=ios --org net.zerexa --project-name zerexa_video /tmp/zerexa-bootstrap
-          cp -r /tmp/zerexa-bootstrap/ios ./flutter_app/
-          cd flutter_app
-          flutter pub get
+          flutter build windows --release `
+            --dart-define=APP_VERSION="${{ needs.meta.outputs.version }}"
 
-      - name: Patch iOS deployment target
+      - name: Package bundle
+        shell: pwsh
         run: |
-          cd flutter_app/ios
-          # Set IPHONEOS_DEPLOYMENT_TARGET to 13.0 for webview_flutter_wkwebview
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          # Allow http loads (App Transport Security)
-          python3 - <<'PY'
-          p='Runner/Info.plist'
-          s=open(p).read()
-          if 'NSAppTransportSecurity' not in s:
-            ins='''
-          <key>NSAppTransportSecurity</key>
-          <dict>
-            <key>NSAllowsArbitraryLoads</key>
-            <true/>
-            <key>NSAllowsArbitraryLoadsInWebContent</key>
-            <true/>
-          </dict>
-          '''
-            s=s.replace('</dict>\n</plist>', ins+'</dict>\n</plist>')
-            open(p,'w').write(s)
-          PY
-          cat Runner/Info.plist
+          New-Item -ItemType Directory -Force -Path artifacts/zerexa-video | Out-Null
+          Copy-Item -Recurse -Force build/windows/x64/runner/Release/* artifacts/zerexa-video/
+          Compress-Archive -Path artifacts/zerexa-video `
+            -DestinationPath "artifacts/zerexa-video-windows-x64-${{ needs.meta.outputs.version }}.zip"
+          Remove-Item -Recurse -Force artifacts/zerexa-video
+          Get-ChildItem artifacts
+          $hashes = Get-FileHash artifacts/*.zip -Algorithm SHA256 | `
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" }
+          $hashes | Out-File -Encoding ascii artifacts/SHA256SUMS.txt
+          Get-Content artifacts/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: |
+            artifacts/zerexa-video-windows-x64-*.zip
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # iOS IPA (unsigned, sideload via TrollStore / AltStore / Sideloadly)
+  # -----------------------------------------------------------------------
+  build-ios:
+    needs: meta
+    runs-on: macos-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
 
       - name: Build iOS (no codesign)
         run: |
-          cd flutter_app
-          flutter build ios --release --no-codesign
-        env:
-          ZEREXA_WEBVIEW_URL: https://video.zerexa.net
+          flutter build ios --release --no-codesign \
+            --build-name="${{ needs.meta.outputs.version }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=APP_VERSION="${{ needs.meta.outputs.version }}"
 
       - name: Package unsigned IPA
         run: |
           mkdir -p artifacts/Payload
-          cp -r flutter_app/build/ios/iphoneos/Runner.app artifacts/Payload/
+          cp -R build/ios/iphoneos/Runner.app artifacts/Payload/
           cd artifacts
-          zip -qr "zerexa-video-app-ios-unsigned-${{ needs.meta.outputs.version }}.ipa" Payload
+          zip -qr "zerexa-video-ios-unsigned-${{ needs.meta.outputs.version }}.ipa" Payload
           rm -rf Payload
-          shasum -a 256 * > SHA256SUMS.txt
+          shasum -a 256 *.ipa > SHA256SUMS.txt
           ls -lh
           cat SHA256SUMS.txt
 
@@ -312,16 +298,16 @@ jobs:
         with:
           name: ios-ipa
           path: |
-            artifacts/zerexa-video-app-ios-unsigned-*.ipa
+            artifacts/zerexa-video-ios-unsigned-*.ipa
             artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
 
   # -----------------------------------------------------------------------
-  # Publish GitHub Release with all 4 native binaries
+  # Publish GitHub Release with all 4 native artifacts
   # -----------------------------------------------------------------------
   release:
-    needs: [meta, build-server, build-android, build-ios]
+    needs: [meta, build-android, build-linux, build-windows, build-ios]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -340,11 +326,10 @@ jobs:
           find release-assets -type f \( \
             -name '*.apk' -o \
             -name '*.ipa' -o \
-            -name 'zerexa-video-server-linux-x64' -o \
-            -name 'zerexa-video-server-win-x64.exe' -o \
+            -name '*.tar.gz' -o \
+            -name '*.zip' -o \
             -name 'SHA256SUMS.txt' \
           \) -exec cp {} flat/ \;
-          # Rename per-artifact SHA256SUMS.txt to avoid overwrite
           ls -lh flat/
           # Generate a combined SHA256SUMS for the release
           cd flat
@@ -373,7 +358,7 @@ jobs:
 
           if [ "$IS_RELEASE" = "true" ]; then
             HEADER_LINE="正式发布版本。构建自 commit \`${COMMIT_SHORT}\`。"
-            PRE_NOTE="稳定版本，可作为生产部署。"
+            PRE_NOTE="稳定版本，可作为日常使用。"
           else
             HEADER_LINE="**版本号:** \`${VERSION}\`  "
             HEADER_LINE="${HEADER_LINE}  **Commit:** [\`${COMMIT_SHORT}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_FULL})  "

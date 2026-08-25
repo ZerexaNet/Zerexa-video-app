@@ -4,14 +4,16 @@ __HEADER_LINE__
 
 > __PRE_NOTE__
 
+原生 Flutter 应用（非网页套壳），一套代码同时构建 Android / iOS / Linux / Windows 四端。
+
 ## 下载
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Windows x64 | `zerexa-video-server-win-x64.exe` | 双击运行, 默认监听 :3000 |
-| Linux x86_64 | `zerexa-video-server-linux-x64` | `chmod +x` 后执行, 默认监听 :3000 |
-| Android | `zerexa-video-app-android-universal-__VERSION__.apk` | universal APK, 同时支持 arm64 / arm / x86_64 |
-| iOS | `zerexa-video-app-ios-unsigned-__VERSION__.ipa` | 未签名, 用 TrollStore / AltStore 安装 |
+| Android | `zerexa-video-android-universal-__VERSION__.apk` | universal APK, 同时支持 arm64 / arm / x86_64 |
+| iOS | `zerexa-video-ios-unsigned-__VERSION__.ipa` | 未签名, 用 TrollStore / AltStore 安装 |
+| Linux x86_64 | `zerexa-video-linux-x64-__VERSION__.tar.gz` | 解压后运行 `./zerexa-video/zerexa_video` |
+| Windows x64 | `zerexa-video-windows-x64-__VERSION__.zip` | 解压后运行 `zerexa-video\ZerexaVideo.exe` |
 
 ## 校验
 
@@ -19,20 +21,18 @@ __HEADER_LINE__
 sha256sum -c SHA256SUMS.txt
 ```
 
-## 服务端运行
+## 桌面端运行
 
 ```bash
-# Linux
-chmod +x zerexa-video-server-linux-x64
-./zerexa-video-server-linux-x64           # 监听 :3000
-PORT=8080 ./zerexa-video-server-linux-x64 # 监听 :8080
-
-# Windows (cmd / PowerShell)
-zerexa-video-server-win-x64.exe
-$env:PORT=8080; .\zerexa-video-server-win-x64.exe
+# Linux (需要系统 libmpv: sudo apt install libmpv2)
+tar xzf zerexa-video-linux-x64-__VERSION__.tar.gz
+./zerexa-video/zerexa_video
 ```
 
-首次运行会自动解压到 `~/.zerexa-video-server/<hash>/`，后续启动直接复用缓存目录。
+```powershell
+# Windows: 解压 zip 后双击
+zerexa-video\ZerexaVideo.exe
+```
 
 ## 移动端安装
 

@@ -1,0 +1,52 @@
+name: zerexa_video
+description: "Zerexa Video - native cross-platform video client for video.zerexa.net"
+publish_to: 'none'
+
+version: 0.5.0+1
+
+environment:
+  sdk: ^3.13.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Networking
+  dio: ^5.7.0
+
+  # State management
+  provider: ^6.1.2
+
+  # Persistence
+  shared_preferences: ^2.3.3
+
+  # Vector graphics (SVG icons / logo)
+  flutter_svg: ^2.0.16
+
+  # Remote images with disk cache
+  cached_network_image: ^3.4.1
+
+  # Cross-platform video playback (Android / iOS / Windows / Linux)
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.7
+
+  # File picking for the chunked upload feature
+  file_picker: ^8.1.6
+
+  # Formatting helpers
+  intl: ^0.20.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icon.svg
+    - assets/logo.svg
