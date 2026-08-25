@@ -69,8 +69,10 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  Future<void> login(String identifier, String password) async {
-    final token = await api.login(identifier: identifier, password: password);
+  Future<void> login(String identifier, String password,
+      {Map<String, dynamic>? geetest}) async {
+    final token = await api.login(
+        identifier: identifier, password: password, geetest: geetest);
     if (token == null || token.isEmpty) {
       throw ApiException('服务器未返回令牌');
     }
@@ -80,9 +82,13 @@ class AuthStore extends ChangeNotifier {
   }
 
   Future<void> register(
-      String username, String email, String password) async {
+      String username, String email, String password,
+      {Map<String, dynamic>? geetest}) async {
     final token = await api.register(
-        username: username, email: email, password: password);
+        username: username,
+        email: email,
+        password: password,
+        geetest: geetest);
     if (token == null || token.isEmpty) {
       throw ApiException('注册成功，请手动登录');
     }

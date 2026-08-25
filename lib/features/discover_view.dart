@@ -32,15 +32,9 @@ class _DiscoverViewState extends State<DiscoverView> {
   String _sort = 'latest';
   String _query = '';
 
-  static const _sorts = [
-    ('latest', '最新发布'),
-    ('views', '最多播放'),
-    ('likes', '最多点赞'),
-  ];
-
-  static const _categories = [
-    '', '生活', '游戏', '科技', '娱乐', '影视', '音乐', '知识', '动画',
-  ];
+  /// Real category names, harvested from the feed on first load (the
+  /// upstream uses labels like "Film / Anime Series").
+  List<String> _categories = [''];
 
   @override
   void initState() {
@@ -60,8 +54,17 @@ class _DiscoverViewState extends State<DiscoverView> {
     super.dispose();
   }
 
+  static const _sorts = [
+    ('latest', '最新发布'),
+    ('views', '最多播放'),
+    ('likes', '最多点赞'),
+  ];
+
   ZerexaApi get _api => context.read<AuthStore>().api;
 
+  /// Loads the filtered feed; on first run it also harvests the real
+  /// category labels (upstream uses names like "Film / Anime Series")
+  /// from a wide slice so the chips always match server data.
   Future<void> _browse() async {
     setState(() {
       _searching = false;
@@ -70,17 +73,34 @@ class _DiscoverViewState extends State<DiscoverView> {
       _offset = 0;
     });
     try {
-      final videos =
-          await _api.listVideos(limit: 24, offset: 0, category: _category.isEmpty ? null : _category, sort: _sort);
+      final videos = await _api.listVideos(
+          limit: 24,
+          offset: 0,
+          category: _category.isEmpty ? null : _category,
+          sort: _sort);
+      if (_categories.length <= 1) {
+        final wide =
+            videos.length >= 24 ? await _api.listVideos(limit: 200) : videos;
+        final seen = <String>{};
+        for (final v in wide) {
+          final c = v.category.trim();
+          if (c.isNotEmpty) seen.add(c);
+        }
+        final discovered = seen.toList()..sort();
+        if (discovered.isNotEmpty && mounted) {
+          setState(() => _categories = ['', ...discovered]);
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _results = videos;
         _offset = videos.length;
         _hasMore = videos.length >= 24;
       });
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      setState(() => _error = '加载失败');
+      if (mounted) setState(() => _error = '加载失败');
     }
   }
 

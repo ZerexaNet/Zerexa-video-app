@@ -82,6 +82,35 @@ class VideoItem {
   String get displayCover => externalCoverUrl ?? coverUrl ?? '';
 }
 
+// ---------- Auth captcha configuration ----------
+
+/// Shape of `GET /api/auth/captcha-config`.
+class CaptchaConfig {
+  final bool geetestEnabled;
+  final String geetestCaptchaId;
+  final bool turnstileEnabled;
+
+  const CaptchaConfig({
+    this.geetestEnabled = false,
+    this.geetestCaptchaId = '',
+    this.turnstileEnabled = false,
+  });
+
+  factory CaptchaConfig.fromJson(Map<String, dynamic> j) => CaptchaConfig(
+        geetestEnabled: _toBool(j['geetest_enabled']) ?? false,
+        geetestCaptchaId: '${j['geetest_captcha_id'] ?? ''}',
+        turnstileEnabled: _toBool(j['turnstile_enabled']) ?? false,
+      );
+
+  /// Fallback used when the config endpoint is unreachable. Matches the
+  /// values the server currently advertises; the key itself stays on the
+  /// server side (the client never needs or embeds it).
+  static const CaptchaConfig fallback = CaptchaConfig(
+    geetestEnabled: true,
+    geetestCaptchaId: 'a53003b56b2f8d6b8aaed24ac85a71e1',
+  );
+}
+
 class Announcement {
   final String id;
   final String title;

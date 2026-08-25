@@ -85,10 +85,19 @@ class ZerexaApi {
     Map<String, dynamic>? query,
   }) async {
     try {
+      // Null-valued query params are dropped entirely: the upstream API
+      // treats literal "null" strings as real filters (e.g.
+      // ?category=null returns an empty list), which used to blank out
+      // the whole home feed.
+      final filteredQuery = query == null
+          ? null
+          : Map.fromEntries(query.entries
+              .where((e) => e.value != null)
+              .map((e) => MapEntry(e.key, '${e.value}')));
       final res = await _dio.request<dynamic>(
         path,
         data: body,
-        queryParameters: query?.map((k, v) => MapEntry(k, '$v')),
+        queryParameters: filteredQuery,
         options: Options(method: method),
       );
       final data = res.data;
@@ -132,6 +141,20 @@ class ZerexaApi {
 
   // ---------- auth ----------
 
+  /// Server-advertised captcha settings. The GeeTest secret key itself
+  /// lives on the server; the client only ever sees the public id.
+  Future<CaptchaConfig> captchaConfig() async {
+    try {
+      final data = await _get('/api/auth/captcha-config');
+      if (data is Map<String, dynamic>) {
+        return CaptchaConfig.fromJson(data);
+      }
+    } catch (_) {
+      // fall through to the hardcoded fallback below
+    }
+    return CaptchaConfig.fallback;
+  }
+
   Future<bool> ping() async {
     final data = await _get('/api/ping');
     if (data is Map<String, dynamic>) return data['pong'] == true;
@@ -149,11 +172,13 @@ class ZerexaApi {
     required String username,
     required String email,
     required String password,
+    Map<String, dynamic>? geetest,
   }) async {
     final data = await _post('/api/auth/register', body: {
       'username': username,
       'email': email,
       'password': password,
+      if (geetest != null) 'geetest': geetest,
     });
     if (data is Map<String, dynamic>) return data['token'] as String?;
     return null;
@@ -162,10 +187,12 @@ class ZerexaApi {
   Future<String?> login({
     required String identifier,
     required String password,
+    Map<String, dynamic>? geetest,
   }) async {
     final data = await _post('/api/auth/login', body: {
       'identifier': identifier,
       'password': password,
+      if (geetest != null) 'geetest': geetest,
     });
     if (data is Map<String, dynamic>) return data['token'] as String?;
     return null;

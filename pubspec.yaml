@@ -25,6 +25,9 @@ dependencies:
   # Vector graphics (SVG icons / logo)
   flutter_svg: ^2.0.16
 
+  # GeeTest v4 captcha challenge (login / registration)
+  webview_flutter: ^4.14.1
+
   # Remote images with disk cache
   cached_network_image: ^3.4.1
 

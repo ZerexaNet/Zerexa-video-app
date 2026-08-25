@@ -1,12 +1,18 @@
 /// Full-screen sign-in / registration flow.
+///
+/// Login and registration are protected by a GeeTest v4 captcha on the
+/// upstream server; the challenge is completed in an embedded WebView
+/// right before the credentials are submitted.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api.dart';
+import '../core/models.dart';
 import '../stores/app_stores.dart';
 import '../widgets/common.dart';
+import '../widgets/geetest_captcha.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -21,10 +27,24 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _obscure = true;
   bool _busy = false;
 
+  /// Captcha settings advertised by the server (cached after first load).
+  CaptchaConfig _captcha = const CaptchaConfig();
+
   final _identifierCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCaptchaConfig();
+  }
+
+  Future<void> _loadCaptchaConfig() async {
+    final cfg = await context.read<AuthStore>().api.captchaConfig();
+    if (mounted) setState(() => _captcha = cfg);
+  }
 
   @override
   void dispose() {
@@ -37,6 +57,29 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // The upstream rejects auth requests without a GeeTest token.
+    Map<String, dynamic>? geetest;
+    if (_captcha.geetestEnabled) {
+      if (!geetestSupportedPlatform) {
+        _showDesktopCaptchaNotice();
+        return;
+      }
+      if (_captcha.geetestCaptchaId.isEmpty) {
+        zxToast(context, '验证码配置加载中，请稍后重试');
+        await _loadCaptchaConfig();
+        return;
+      }
+      geetest = await showGeetestCaptcha(
+        context,
+        captchaId: _captcha.geetestCaptchaId,
+      );
+      if (geetest == null) {
+        zxToast(context, '需要完成安全验证才能继续');
+        return;
+      }
+    }
+
     setState(() => _busy = true);
     final auth = context.read<AuthStore>();
     try {
@@ -45,9 +88,14 @@ class _AuthScreenState extends State<AuthScreen> {
           _usernameCtrl.text.trim(),
           _emailCtrl.text.trim(),
           _passwordCtrl.text,
+          geetest: geetest,
         );
       } else {
-        await auth.login(_identifierCtrl.text.trim(), _passwordCtrl.text);
+        await auth.login(
+          _identifierCtrl.text.trim(),
+          _passwordCtrl.text,
+          geetest: geetest,
+        );
       }
       if (mounted) {
         zxToast(context, _isRegister ? '注册成功' : '欢迎回来');
@@ -60,6 +108,28 @@ class _AuthScreenState extends State<AuthScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Linux / Windows builds cannot render the WebView captcha yet.
+  void _showDesktopCaptchaNotice() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('暂不支持验证码登录'),
+        content: const Text(
+          '登录与注册需要完成 GeeTest 安全验证，当前桌面平台（Linux / Windows）'
+          '尚未内置验证码组件。\n\n'
+          '你可以在 Android / iOS 客户端或官网完成登录，桌面端浏览视频'
+          '不受影响。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -151,6 +221,23 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(_isRegister ? '创建账号' : '登录'),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        size: 13,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _captcha.geetestEnabled ? '登录前需完成安全验证' : '安全验证未启用',
+                        style: TextStyle(
+                            fontSize: 12, color: scheme.onSurfaceVariant),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   TextButton(
