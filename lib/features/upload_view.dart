@@ -1,9 +1,10 @@
 /// Video submission ("视频投稿") with chunked upload support.
 ///
-/// The file is picked via [FilePicker] with `withData: true`, so its bytes
-/// are buffered in memory; large-file streaming from disk is delegated to
-/// the server chunk API by slicing the buffer into presigned parts.
+/// The file is picked via [FilePicker]; its bytes are buffered in memory
+/// and sliced into presigned parts for the server chunk API.
 library;
+
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ class _UploadViewState extends State<UploadView> {
   final _descriptionCtrl = TextEditingController();
 
   PlatformFile? _pickedFile;
+  int _pickedSize = 0;
   double _progress = 0;
   int _uploadedChunks = 0;
   int _totalChunks = 0;
@@ -50,16 +52,21 @@ class _UploadViewState extends State<UploadView> {
 
   Future<void> _pickFile() async {
     if (_busy) return;
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.video,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) return;
-    setState(() {
-      _pickedFile = result.files.single;
-      _error = null;
-      if (_phase == 'done') _phase = 'idle';
-    });
+    try {
+      final files = await FilePicker.pickFiles(type: FileType.video);
+      if (files.isEmpty) return;
+      final f = files.first;
+      final size = await f.length();
+      if (!mounted) return;
+      setState(() {
+        _pickedFile = f;
+        _pickedSize = size;
+        _error = null;
+        if (_phase == 'done') _phase = 'idle';
+      });
+    } catch (_) {
+      if (mounted) zxToast(context, '选择文件失败');
+    }
   }
 
   // ---------- upload flow ----------
@@ -76,11 +83,19 @@ class _UploadViewState extends State<UploadView> {
       zxToast(context, '请先选择视频文件');
       return;
     }
-    // Bytes are read fully into memory (withData: true); streaming very
-    // large files from disk is delegated to the server chunk API below by
-    // slicing this buffer into presigned parts.
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
+    // Bytes are read fully into memory; streaming very large files is
+    // delegated to the server chunk API by slicing this buffer into
+    // presigned parts.
+    final Uint8List bytes;
+    final int fileSize;
+    try {
+      bytes = await file.readAsBytes();
+      fileSize = bytes.length;
+    } catch (_) {
+      if (mounted) zxToast(context, '无法读取文件内容，请重新选择');
+      return;
+    }
+    if (bytes.isEmpty) {
       zxToast(context, '无法读取文件内容，请重新选择');
       return;
     }
@@ -95,8 +110,8 @@ class _UploadViewState extends State<UploadView> {
     try {
       final session = await api.initUpload({
         'filename': file.name,
-        'size': file.size,
-        'mime_type': _mimeFor(file.extension),
+        'size': fileSize,
+        'mime_type': _mimeFor(file.name),
         'kind': 'video',
       });
       final body = <String, dynamic>{
@@ -189,12 +204,16 @@ class _UploadViewState extends State<UploadView> {
     _titleCtrl.clear();
     _categoryCtrl.clear();
     _descriptionCtrl.clear();
-    setState(() => _pickedFile = null);
+    setState(() {
+      _pickedFile = null;
+      _pickedSize = 0;
+    });
   }
 
-  /// Derives a MIME type from the picked file extension.
-  String _mimeFor(String? extension) {
-    switch ((extension ?? '').toLowerCase()) {
+  /// Derives a MIME type from the picked file name.
+  String _mimeFor(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    switch (ext) {
       case 'mp4':
         return 'video/mp4';
       case 'mkv':
@@ -339,7 +358,7 @@ class _UploadViewState extends State<UploadView> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          formatBytes(file.size),
+                          formatBytes(_pickedSize),
                           style: TextStyle(
                               fontSize: 12, color: scheme.onSurfaceVariant),
                         ),
